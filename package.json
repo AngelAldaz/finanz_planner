@@ -12,11 +12,19 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fontsource/hanken-grotesk": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
+    "@fontsource/space-mono": "^5.2.9",
+    "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.3",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0",
     "ulid": "^3.0.2",
+    "vaul": "^1.1.2",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -30,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.9.0",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",

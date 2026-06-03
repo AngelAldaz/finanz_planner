@@ -110,3 +110,16 @@ export function weekRangeLabel(weekStart: ISODate): string {
   }
   return `${start.d} ${monthNameES(start.m)} al ${end.d} ${monthNameES(end.m)}`
 }
+
+/** Todos los lunes (inicios de semana) dentro de [from, to]. */
+export function eachWeekStart(from: ISODate, to: ISODate): ISODate[] {
+  const out: ISODate[] = []
+  const end = mondayOf(to)
+  let cur = mondayOf(from)
+  let guard = 0
+  while (compareISO(cur, end) <= 0 && guard++ < 520) {
+    out.push(cur)
+    cur = addDays(cur, 7)
+  }
+  return out
+}
