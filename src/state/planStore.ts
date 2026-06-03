@@ -43,8 +43,9 @@ interface PlanState {
   updateMovement: (m: Movement) => Promise<void>
   deleteMovement: (id: ID) => Promise<void>
   toggleIncluded: (id: ID) => Promise<void>
-  setRealBalance: (weekStart: ISODate, amount: number) => Promise<void>
+  setRealBalance: (weekStart: ISODate, amount: number, name?: string) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
+  deleteScenario: (id: ID) => Promise<void>
 }
 
 export const usePlanStore = create<PlanState>((set, get) => ({
@@ -134,7 +135,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     await get().refresh()
   },
 
-  setRealBalance: async (weekStart, amount) => {
+  setRealBalance: async (weekStart, amount, name) => {
     const { activeScenarioId, movements } = get()
     if (!activeScenarioId) return
     const weekMovs = movements
@@ -142,19 +143,27 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       .sort((a, b) => a.order - b.order)
     const existingAnchor = weekMovs.find((m) => m.kind === 'anchor')
     if (existingAnchor) {
-      await repository.putMovement({ ...existingAnchor, amount })
+      // un solo saldo real por semana, fijado al inicio (sin fecha exacta)
+      await repository.putMovement({
+        ...existingAnchor,
+        amount,
+        name: name ?? existingAnchor.name,
+        kind: 'anchor',
+        date: undefined,
+        weekStart,
+      })
     } else {
       const minOrder = weekMovs.length ? Math.min(...weekMovs.map((m) => m.order)) : 0
       await repository.putMovement({
         id: newId(),
         scenarioId: activeScenarioId,
         kind: 'anchor',
-        name: 'Saldo real',
+        name: name ?? 'Saldo real',
         amount,
         weekStart,
         included: true,
         source: { kind: 'manual' },
-        order: minOrder - 1,
+        order: minOrder - 1, // siempre primero en la semana
       })
     }
     await get().refresh()
@@ -166,5 +175,14 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const id = await repository.duplicateScenario(activeScenarioId, name)
     set({ scenarios: await repository.listScenarios(activePlanId) })
     await get().selectScenario(id)
+  },
+
+  deleteScenario: async (id) => {
+    const { activePlanId, activeScenarioId, scenarios } = get()
+    if (!activePlanId || scenarios.length <= 1) return // nunca borrar el último
+    await repository.deleteScenario(id)
+    const remaining = await repository.listScenarios(activePlanId)
+    set({ scenarios: remaining })
+    if (activeScenarioId === id && remaining[0]) await get().selectScenario(remaining[0].id)
   },
 }))
