@@ -1,0 +1,42 @@
+@import 'tailwindcss';
+
+/* ----- Sistema de diseño "Bold fintech" (tokens) ----- */
+@theme {
+  --color-ink: #141414;
+  --color-paper: #f4f1e8;
+  --color-surface: #ffffff;
+  --color-accent: #ccff00; /* lima eléctrico: marca / activos / CTAs */
+  --color-pos: #0e9f6e; /* ingreso */
+  --color-neg: #ff3b30; /* gasto */
+  --color-cobalt: #2e5bff; /* líneas de gráfica */
+  --color-muted: #8a857a;
+
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --radius-chunky: 14px;
+
+  --shadow-hard-sm: 2px 2px 0 #141414;
+  --shadow-hard: 4px 4px 0 #141414;
+  --shadow-hard-lg: 6px 6px 0 #141414;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  /* números tabulares tipo libro contable */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}
