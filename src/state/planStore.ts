@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   Category,
+  CreditCard,
   Horizon,
   ID,
   ISODate,
@@ -9,12 +10,14 @@ import type {
   Scenario,
   ScenarioRecurrence,
 } from '../domain/types'
+import { LIQUID } from '../domain/types'
 import { repository, newId, nowISO } from '../data'
 import { buildSeedBundle } from '../data/seed/seedData'
 import { mondayOf } from '../domain/dates'
 import { effectiveDate } from '../domain/ledger'
 
 const DEFAULT_HORIZON: Horizon = { start: '2026-05-25', end: '2026-07-05' }
+const CARD_COLORS = ['#2e5bff', '#ff3b30', '#0e9f6e', '#9b51e0', '#e8923c', '#00a3a3']
 
 export interface AddMovementInput {
   name: string
@@ -23,6 +26,8 @@ export interface AddMovementInput {
   date?: ISODate
   weekStart?: ISODate
   categoryId?: ID
+  creditEligible?: boolean
+  payCardId?: ID
 }
 
 interface PlanState {
@@ -30,6 +35,7 @@ interface PlanState {
   plans: Plan[]
   scenarios: Scenario[]
   categories: Category[]
+  creditCards: CreditCard[]
   activePlanId?: ID
   activeScenarioId?: ID
   movements: Movement[]
@@ -43,9 +49,12 @@ interface PlanState {
   updateMovement: (m: Movement) => Promise<void>
   deleteMovement: (id: ID) => Promise<void>
   toggleIncluded: (id: ID) => Promise<void>
-  setRealBalance: (weekStart: ISODate, amount: number, name?: string) => Promise<void>
+  setRealBalance: (weekStart: ISODate, amount: number, name?: string, accountId?: ID) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
   deleteScenario: (id: ID) => Promise<void>
+  addCard: (name: string, limit: number) => Promise<void>
+  updateCard: (card: CreditCard) => Promise<void>
+  deleteCard: (id: ID) => Promise<void>
 }
 
 export const usePlanStore = create<PlanState>((set, get) => ({
@@ -53,6 +62,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   plans: [],
   scenarios: [],
   categories: [],
+  creditCards: [],
   movements: [],
   recurrences: [],
   horizon: DEFAULT_HORIZON,
@@ -63,9 +73,10 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }
     const plans = await repository.listPlans()
     const plan = plans[0]
-    const [scenarios, categories] = await Promise.all([
+    const [scenarios, categories, creditCards] = await Promise.all([
       plan ? repository.listScenarios(plan.id) : Promise.resolve([]),
       repository.listCategories(),
+      repository.listCreditCards(),
     ])
     const scenario = scenarios[0]
     set({
@@ -73,6 +84,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       plans,
       scenarios,
       categories,
+      creditCards,
       activePlanId: plan?.id,
       horizon: plan ? { start: plan.horizonStart, end: plan.horizonEnd } : DEFAULT_HORIZON,
     })
@@ -101,7 +113,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const { activeScenarioId, movements } = get()
     if (!activeScenarioId) return
     const order = movements.length ? Math.max(...movements.map((m) => m.order)) + 1 : 0
-    const m: Movement = {
+    await repository.putMovement({
       id: newId(),
       scenarioId: activeScenarioId,
       kind: input.kind,
@@ -110,11 +122,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       date: input.date,
       weekStart: input.weekStart ?? (input.date ? mondayOf(input.date) : undefined),
       categoryId: input.categoryId,
+      creditEligible: input.creditEligible,
+      payCardId: input.payCardId,
       included: true,
       source: { kind: 'manual' },
       order,
-    }
-    await repository.putMovement(m)
+    })
     await get().refresh()
   },
 
@@ -135,20 +148,23 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     await get().refresh()
   },
 
-  setRealBalance: async (weekStart, amount, name) => {
+  setRealBalance: async (weekStart, amount, name, accountId = LIQUID) => {
     const { activeScenarioId, movements } = get()
     if (!activeScenarioId) return
     const weekMovs = movements
       .filter((m) => mondayOf(effectiveDate(m)) === weekStart)
       .sort((a, b) => a.order - b.order)
-    const existingAnchor = weekMovs.find((m) => m.kind === 'anchor')
-    if (existingAnchor) {
-      // un solo saldo real por semana, fijado al inicio (sin fecha exacta)
+    const storedAccount = accountId === LIQUID ? undefined : accountId
+    const existing = weekMovs.find(
+      (m) => m.kind === 'anchor' && (m.accountId ?? LIQUID) === accountId,
+    )
+    if (existing) {
       await repository.putMovement({
-        ...existingAnchor,
+        ...existing,
         amount,
-        name: name ?? existingAnchor.name,
+        name: name ?? existing.name,
         kind: 'anchor',
+        accountId: storedAccount,
         date: undefined,
         weekStart,
       })
@@ -160,6 +176,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
         kind: 'anchor',
         name: name ?? 'Saldo real',
         amount,
+        accountId: storedAccount,
         weekStart,
         included: true,
         source: { kind: 'manual' },
@@ -184,5 +201,27 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const remaining = await repository.listScenarios(activePlanId)
     set({ scenarios: remaining })
     if (activeScenarioId === id && remaining[0]) await get().selectScenario(remaining[0].id)
+  },
+
+  addCard: async (name, limit) => {
+    const { creditCards } = get()
+    await repository.putCreditCard({
+      id: newId(),
+      name,
+      limit,
+      color: CARD_COLORS[creditCards.length % CARD_COLORS.length],
+      position: creditCards.length,
+    })
+    set({ creditCards: await repository.listCreditCards() })
+  },
+
+  updateCard: async (card) => {
+    await repository.putCreditCard(card)
+    set({ creditCards: await repository.listCreditCards() })
+  },
+
+  deleteCard: async (id) => {
+    await repository.deleteCreditCard(id)
+    set({ creditCards: await repository.listCreditCards() })
   },
 }))
