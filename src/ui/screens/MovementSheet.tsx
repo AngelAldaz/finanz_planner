@@ -7,7 +7,7 @@ import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { fromCents, toCents } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
-export type SheetMode = 'gasto' | 'ingreso' | 'pago' | 'real'
+export type SheetMode = 'gasto' | 'ingreso' | 'pago' | 'real' | 'bloqueo'
 
 export interface MovementSubmit {
   kind: MovementKind
@@ -19,6 +19,7 @@ export interface MovementSubmit {
   creditEligible?: boolean
   payCardId?: ID
   accountId?: ID
+  cardBlock?: { cardId: ID; blocked: boolean }
 }
 
 interface Props {
@@ -38,6 +39,7 @@ const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
 
 function modeOf(m: Movement | null | undefined): SheetMode {
   if (!m) return 'gasto'
+  if (m.cardBlock) return 'bloqueo'
   if (m.kind === 'anchor') return 'real'
   if (m.payCardId) return 'pago'
   return m.amount >= 0 ? 'ingreso' : 'gasto'
@@ -48,12 +50,14 @@ const LABELS: Record<SheetMode, string> = {
   ingreso: 'Ingreso',
   pago: 'Pago tarjeta',
   real: 'Saldo real',
+  bloqueo: 'Bloqueo',
 }
 const ACTIVE_CLS: Record<SheetMode, string> = {
   gasto: 'bg-neg text-white',
   ingreso: 'bg-pos text-white',
   pago: 'bg-cobalt text-white',
   real: 'bg-accent text-ink',
+  bloqueo: 'bg-ink text-white',
 }
 
 export function MovementSheet({
@@ -77,6 +81,7 @@ export function MovementSheet({
   const [creditEligible, setCreditEligible] = useState(false)
   const [payCardId, setPayCardId] = useState<ID | undefined>(undefined)
   const [account, setAccount] = useState<ID>(LIQUID)
+  const [blockOn, setBlockOn] = useState(true)
 
   useEffect(() => {
     if (!open) return
@@ -88,8 +93,9 @@ export function MovementSheet({
     setDate(m?.date ?? '')
     setCategoryId(m?.categoryId)
     setCreditEligible(m?.creditEligible ?? false)
-    setPayCardId(m?.payCardId ?? cards[0]?.id)
+    setPayCardId(m?.payCardId ?? m?.cardBlock?.cardId ?? cards[0]?.id)
     setAccount(m?.accountId ?? LIQUID)
+    setBlockOn(m?.cardBlock?.blocked ?? true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -98,16 +104,24 @@ export function MovementSheet({
     [week],
   )
 
-  const modes: SheetMode[] = ['gasto', 'ingreso', ...(cards.length ? (['pago'] as SheetMode[]) : []), 'real']
+  const modes: SheetMode[] = [
+    'gasto',
+    'ingreso',
+    ...(cards.length ? (['pago'] as SheetMode[]) : []),
+    'real',
+    ...(cards.length ? (['bloqueo'] as SheetMode[]) : []),
+  ]
   const isReal = mode === 'real'
   const isPago = mode === 'pago'
+  const isBloqueo = mode === 'bloqueo'
   const cardName = (id?: ID) => cards.find((c) => c.id === id)?.name ?? 'tarjeta'
 
-  const canSave =
-    amount !== '' &&
-    !Number.isNaN(Number(amount)) &&
-    (isReal || isPago || name.trim() !== '') &&
-    (!isPago || !!payCardId)
+  const canSave = isBloqueo
+    ? !!payCardId
+    : amount !== '' &&
+      !Number.isNaN(Number(amount)) &&
+      (isReal || isPago || name.trim() !== '') &&
+      (!isPago || !!payCardId)
 
   function changeMode(next: SheetMode) {
     setMode(next)
@@ -116,13 +130,21 @@ export function MovementSheet({
 
   function submit() {
     if (!canSave) return
-    const cents = toCents(Math.abs(Number(amount)))
     const wk = date && !isReal ? mondayOf(date) : week || undefined
-    if (isReal) {
+    if (isBloqueo) {
+      onSubmit({
+        kind: 'delta',
+        name: `${blockOn ? 'Bloquear' : 'Reactivar'} ${cardName(payCardId)}`,
+        amount: 0,
+        cardBlock: { cardId: payCardId as ID, blocked: blockOn },
+        weekStart: wk,
+        date: date || undefined,
+      })
+    } else if (isReal) {
       onSubmit({
         kind: 'anchor',
         name: name.trim() || (account === LIQUID ? 'Saldo real' : `Saldo ${cardName(account)}`),
-        amount: cents,
+        amount: toCents(Math.abs(Number(amount))),
         accountId: account,
         weekStart: week || undefined,
       })
@@ -130,12 +152,13 @@ export function MovementSheet({
       onSubmit({
         kind: 'delta',
         name: name.trim() || `Pago ${cardName(payCardId)}`,
-        amount: -cents,
+        amount: -toCents(Math.abs(Number(amount))),
         payCardId,
         weekStart: wk,
         date: date || undefined,
       })
     } else {
+      const cents = toCents(Math.abs(Number(amount)))
       onSubmit({
         kind: 'delta',
         name: name.trim(),
@@ -176,148 +199,172 @@ export function MovementSheet({
               ))}
             </div>
 
-            <Field label="Concepto">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={
-                  isReal ? 'Saldo real' : isPago ? `Pago ${cardName(payCardId)}` : 'Gasolina, Don René…'
-                }
-                autoFocus={!movement}
-                className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
-              />
-            </Field>
-
-            <Field
-              label={
-                isReal
-                  ? account === LIQUID
-                    ? 'Saldo real líquido (tu dinero)'
-                    : `Deuda real de ${cardName(account)}`
-                  : isPago
-                    ? 'Cuánto abonas'
-                    : 'Monto'
-              }
-            >
-              <div className="flex items-center gap-1">
-                <span className="font-mono text-lg text-muted">$</span>
-                <input
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                  inputMode="decimal"
-                  placeholder="0"
-                  className="tnum w-full bg-transparent font-mono text-lg outline-none placeholder:text-muted/60"
+            {isBloqueo ? (
+              <>
+                <Chips
+                  label="¿Qué tarjeta?"
+                  options={cards}
+                  value={payCardId}
+                  onChange={setPayCardId}
                 />
-              </div>
-            </Field>
-
-            {/* selector de cuenta (saldo real) */}
-            {isReal && (
-              <Chips
-                label="¿De qué cuenta?"
-                options={[{ id: LIQUID, name: 'Líquido', color: '#141414' }, ...cards]}
-                value={account}
-                onChange={setAccount}
-              />
-            )}
-
-            {/* selector de tarjeta a pagar */}
-            {isPago && (
-              <Chips
-                label="¿Qué tarjeta pagas?"
-                options={cards}
-                value={payCardId}
-                onChange={(id) => setPayCardId(id)}
-              />
-            )}
-
-            <Field label="Semana">
-              <select
-                value={week}
-                onChange={(e) => {
-                  setWeek(e.target.value)
-                  setDate('')
-                }}
-                className="w-full bg-transparent text-base outline-none"
-              >
-                {weeks.map((w) => (
-                  <option key={w} value={w}>
-                    {weekRangeLabel(w)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            {isReal ? (
-              <p className="px-1 text-xs text-muted">
-                El saldo real se fija al inicio de la semana seleccionada.
-              </p>
-            ) : (
-              <div>
-                <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Día (opcional)
-                </span>
-                <div className="mt-1 grid grid-cols-7 gap-1">
-                  {weekDays.map((d, i) => {
-                    const active = date === d
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setDate(active ? '' : d)}
-                        className={cn(
-                          'flex flex-col items-center rounded-lg border-2 border-ink py-1 transition-transform active:translate-y-0.5',
-                          active ? 'bg-ink text-paper' : 'bg-surface',
-                        )}
-                      >
-                        <span className="text-[10px] font-semibold uppercase">{DOW[i]}</span>
-                        <span className="tnum font-mono text-sm">{parseISO(d).d}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ¿pagable con crédito? (solo gasto, si hay tarjetas) */}
-            {mode === 'gasto' && cards.length > 0 && (
-              <button
-                onClick={() => setCreditEligible((v) => !v)}
-                className="flex w-full items-center justify-between rounded-chunky border-2 border-ink bg-surface px-3 py-2.5 text-left"
-              >
-                <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
-                <span
-                  className={cn(
-                    'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
-                    creditEligible ? 'bg-accent' : 'bg-surface',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'h-4 w-4 rounded-full bg-ink transition-transform',
-                      creditEligible && 'translate-x-5',
-                    )}
-                  />
-                </span>
-              </button>
-            )}
-
-            {(mode === 'gasto' || mode === 'ingreso') && categories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {categories.map((c) => (
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    key={c.id}
-                    onClick={() => setCategoryId(categoryId === c.id ? undefined : c.id)}
+                    onClick={() => setBlockOn(true)}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-sm font-semibold',
-                      categoryId === c.id ? 'bg-ink text-paper' : 'bg-surface',
+                      'rounded-chunky border-2 border-ink py-2 text-sm font-bold active:translate-y-0.5',
+                      blockOn ? 'bg-ink text-paper shadow-hard-sm' : 'bg-surface',
                     )}
                   >
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
-                    {c.name}
+                    🔒 Bloquear
                   </button>
-                ))}
-              </div>
+                  <button
+                    onClick={() => setBlockOn(false)}
+                    className={cn(
+                      'rounded-chunky border-2 border-ink py-2 text-sm font-bold active:translate-y-0.5',
+                      !blockOn ? 'bg-pos text-white shadow-hard-sm' : 'bg-surface',
+                    )}
+                  >
+                    🔓 Reactivar
+                  </button>
+                </div>
+                <p className="px-1 text-xs text-muted">
+                  {blockOn
+                    ? 'A partir de esta semana no saldrá dinero de la tarjeta (sí podrás pagarla).'
+                    : 'A partir de esta semana la tarjeta vuelve a poder usarse.'}
+                </p>
+                <WeekDay
+                  weeks={weeks}
+                  week={week}
+                  setWeek={setWeek}
+                  date={date}
+                  setDate={setDate}
+                  days={weekDays}
+                />
+              </>
+            ) : (
+              <>
+                <Field label="Concepto">
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={
+                      isReal ? 'Saldo real' : isPago ? `Pago ${cardName(payCardId)}` : 'Gasolina, Don René…'
+                    }
+                    autoFocus={!movement}
+                    className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
+                  />
+                </Field>
+
+                <Field
+                  label={
+                    isReal
+                      ? account === LIQUID
+                        ? 'Saldo real líquido (tu dinero)'
+                        : `Deuda real de ${cardName(account)}`
+                      : isPago
+                        ? 'Cuánto abonas'
+                        : 'Monto'
+                  }
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-lg text-muted">$</span>
+                    <input
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                      inputMode="decimal"
+                      placeholder="0"
+                      className="tnum w-full bg-transparent font-mono text-lg outline-none placeholder:text-muted/60"
+                    />
+                  </div>
+                </Field>
+
+                {isReal && (
+                  <Chips
+                    label="¿De qué cuenta?"
+                    options={[{ id: LIQUID, name: 'Líquido', color: '#141414' }, ...cards]}
+                    value={account}
+                    onChange={setAccount}
+                  />
+                )}
+                {isPago && (
+                  <Chips
+                    label="¿Qué tarjeta pagas?"
+                    options={cards}
+                    value={payCardId}
+                    onChange={setPayCardId}
+                  />
+                )}
+
+                {isReal ? (
+                  <>
+                    <Field label="Semana">
+                      <select
+                        value={week}
+                        onChange={(e) => setWeek(e.target.value)}
+                        className="w-full bg-transparent text-base outline-none"
+                      >
+                        {weeks.map((w) => (
+                          <option key={w} value={w}>
+                            {weekRangeLabel(w)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <p className="px-1 text-xs text-muted">
+                      El saldo real se fija al inicio de la semana seleccionada.
+                    </p>
+                  </>
+                ) : (
+                  <WeekDay
+                    weeks={weeks}
+                    week={week}
+                    setWeek={setWeek}
+                    date={date}
+                    setDate={setDate}
+                    days={weekDays}
+                  />
+                )}
+
+                {mode === 'gasto' && cards.length > 0 && (
+                  <button
+                    onClick={() => setCreditEligible((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-chunky border-2 border-ink bg-surface px-3 py-2.5 text-left"
+                  >
+                    <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
+                    <span
+                      className={cn(
+                        'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
+                        creditEligible ? 'bg-accent' : 'bg-surface',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'h-4 w-4 rounded-full bg-ink transition-transform',
+                          creditEligible && 'translate-x-5',
+                        )}
+                      />
+                    </span>
+                  </button>
+                )}
+
+                {(mode === 'gasto' || mode === 'ingreso') && categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setCategoryId(categoryId === c.id ? undefined : c.id)}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-sm font-semibold',
+                          categoryId === c.id ? 'bg-ink text-paper' : 'bg-surface',
+                        )}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             <div className="flex gap-2 pt-1">
@@ -345,6 +392,67 @@ export function MovementSheet({
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
+  )
+}
+
+function WeekDay({
+  weeks,
+  week,
+  setWeek,
+  date,
+  setDate,
+  days,
+}: {
+  weeks: ISODate[]
+  week: ISODate
+  setWeek: (w: ISODate) => void
+  date: string
+  setDate: (d: string) => void
+  days: ISODate[]
+}) {
+  return (
+    <>
+      <Field label="Semana">
+        <select
+          value={week}
+          onChange={(e) => {
+            setWeek(e.target.value)
+            setDate('')
+          }}
+          className="w-full bg-transparent text-base outline-none"
+        >
+          {weeks.map((w) => (
+            <option key={w} value={w}>
+              {weekRangeLabel(w)}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div>
+        <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
+          Día (opcional)
+        </span>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {days.map((d, i) => {
+            const active = date === d
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDate(active ? '' : d)}
+                className={cn(
+                  'flex flex-col items-center rounded-lg border-2 border-ink py-1 transition-transform active:translate-y-0.5',
+                  active ? 'bg-ink text-paper' : 'bg-surface',
+                )}
+              >
+                <span className="text-[10px] font-semibold uppercase">{DOW[i]}</span>
+                <span className="tnum font-mono text-sm">{parseISO(d).d}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </>
   )
 }
 

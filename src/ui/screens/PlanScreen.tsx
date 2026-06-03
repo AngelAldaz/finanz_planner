@@ -7,6 +7,7 @@ import {
   CreditCard as CardIcon,
   Lock,
   Plus,
+  Unlock,
   X,
 } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
@@ -122,12 +123,12 @@ export function PlanScreen() {
     }
   }
 
-  function handleSaveCard(d: { id?: ID; name: string; limit: number; blocked: boolean }) {
+  function handleSaveCard(d: { id?: ID; name: string; limit: number }) {
     if (d.id) {
       const existing = creditCards.find((c) => c.id === d.id)
-      if (existing) void updateCard({ ...existing, name: d.name, limit: d.limit, blocked: d.blocked })
+      if (existing) void updateCard({ ...existing, name: d.name, limit: d.limit })
     } else {
-      void addCard(d.name, d.limit, d.blocked)
+      void addCard(d.name, d.limit)
     }
   }
 
@@ -332,7 +333,7 @@ function CardStrip({
   }
   return (
     <div className="-mx-4 flex gap-3 overflow-x-auto px-4">
-      {cards.map(({ card, debt, available }) => {
+      {cards.map(({ card, debt, available, blocked }) => {
         const pct = card.limit > 0 ? Math.min(100, Math.max(0, (debt / card.limit) * 100)) : 0
         return (
           <button
@@ -343,19 +344,19 @@ function CardStrip({
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: card.color }} />
               <span className="truncate text-sm font-bold">{card.name}</span>
-              {card.blocked && <Lock size={12} className="shrink-0 text-muted" />}
+              {blocked && <Lock size={12} className="shrink-0 text-muted" />}
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full border border-ink bg-paper">
               <div
                 className="h-full"
-                style={{ width: `${pct}%`, background: card.blocked ? '#8a857a' : card.color }}
+                style={{ width: `${pct}%`, background: blocked ? '#8a857a' : card.color }}
               />
             </div>
             <div className="mt-1.5 flex justify-between text-[11px]">
               <span className="text-neg">
                 debe <Money cents={debt} />
               </span>
-              {card.blocked ? (
+              {blocked ? (
                 <span className="flex items-center gap-1 text-muted">
                   <Lock size={10} /> bloqueada
                 </span>
@@ -394,9 +395,11 @@ const TYPE_META = {
   gasto: { bg: 'bg-neg', fg: 'text-white', Icon: ArrowUpRight },
   pago: { bg: 'bg-cobalt', fg: 'text-white', Icon: CardIcon },
   real: { bg: 'bg-accent', fg: 'text-ink', Icon: Anchor },
+  bloqueo: { bg: 'bg-ink', fg: 'text-white', Icon: Lock },
 } as const
 
 function movementType(mv: Movement): keyof typeof TYPE_META {
+  if (mv.cardBlock) return 'bloqueo'
   if (mv.kind === 'anchor') return 'real'
   if (mv.payCardId) return 'pago'
   return mv.amount >= 0 ? 'ingreso' : 'gasto'
@@ -404,7 +407,8 @@ function movementType(mv: Movement): keyof typeof TYPE_META {
 
 function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit, onToggle }: RowProps) {
   const meta = TYPE_META[movementType(mv)]
-  const Icon = meta.Icon
+  const isBlock = !!mv.cardBlock
+  const Icon = isBlock ? (mv.cardBlock!.blocked ? Lock : Unlock) : meta.Icon
   const isAnchor = mv.kind === 'anchor'
   const isCardAnchor = isAnchor && !!mv.accountId && mv.accountId !== LIQUID
   const anchorCard = isCardAnchor ? cardsById.get(mv.accountId!) : undefined
@@ -416,10 +420,11 @@ function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit
       className={cn(
         'flex items-center gap-3 px-4 py-2.5',
         isAnchor && 'bg-accent/10',
+        isBlock && 'bg-ink/5',
         !mv.included && 'opacity-40',
       )}
     >
-      {/* badge de tipo (verde ingreso · rojo gasto · azul pago · lima saldo real) — también prende/apaga */}
+      {/* badge de tipo (ingreso · gasto · pago · saldo real · bloqueo) — también prende/apaga */}
       <button onClick={onToggle} aria-label={mv.included ? 'Excluir' : 'Incluir'} className="shrink-0">
         <span
           className={cn(
@@ -434,7 +439,7 @@ function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit
       <button onClick={onEdit} className="flex flex-1 items-center justify-between gap-2 text-left">
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
-            {category && !isAnchor && (
+            {category && !isAnchor && !isBlock && (
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ background: category.color }}
@@ -451,14 +456,14 @@ function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit
           </span>
         </span>
         <span className="shrink-0 text-right">
-          {isAnchor ? (
+          {isBlock ? null : isAnchor ? (
             <span className="text-sm font-bold">
               = <Money cents={mv.amount} />
             </span>
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />
           )}
-          {!isCardAnchor && mv.included && balance != null && (
+          {!isCardAnchor && !isBlock && mv.included && balance != null && (
             <Money cents={balance} className="block text-xs text-muted" />
           )}
         </span>
