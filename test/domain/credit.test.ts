@@ -109,4 +109,31 @@ describe('enrutado débito/crédito', () => {
     expect(computed.cardStates[0].debt).toBe(50000)
     expect(computed.cardStates[0].available).toBe(450000)
   })
+
+  it('una tarjeta BLOQUEADA no se usa para cargar (el gasto cae a débito)', () => {
+    const pts = computeLedger(
+      [
+        mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
+        mv({ name: 'compra', amount: -50000, creditEligible: true }),
+      ],
+      [{ ...card('visa', 500000), blocked: true }],
+    )
+    expect(pts[1].chargedToCardId).toBeUndefined()
+    expect(pts[1].balanceAfter).toBe(-50000) // se fue a débito (rojo)
+    expect(pts[1].cardDebtAfter['visa']).toBe(0)
+  })
+
+  it('una tarjeta bloqueada SÍ puede pagarse', () => {
+    const pts = computeLedger(
+      [
+        mv({ name: 'inicio', kind: 'anchor', amount: 100000 }),
+        mv({ name: 'deuda real visa', kind: 'anchor', amount: 80000, accountId: 'visa' }),
+        mv({ name: 'pago visa', amount: -50000, payCardId: 'visa' }),
+      ],
+      [{ ...card('visa', 500000), blocked: true }],
+    )
+    const last = pts[pts.length - 1]
+    expect(last.cardDebtAfter['visa']).toBe(30000) // 800 - 500
+    expect(last.balanceAfter).toBe(50000) // 1000 - 500
+  })
 })

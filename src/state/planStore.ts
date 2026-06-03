@@ -52,7 +52,7 @@ interface PlanState {
   setRealBalance: (weekStart: ISODate, amount: number, name?: string, accountId?: ID) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
   deleteScenario: (id: ID) => Promise<void>
-  addCard: (name: string, limit: number) => Promise<void>
+  addCard: (name: string, limit: number, blocked?: boolean) => Promise<void>
   updateCard: (card: CreditCard) => Promise<void>
   deleteCard: (id: ID) => Promise<void>
 }
@@ -203,12 +203,13 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     if (activeScenarioId === id && remaining[0]) await get().selectScenario(remaining[0].id)
   },
 
-  addCard: async (name, limit) => {
+  addCard: async (name, limit, blocked = false) => {
     const { creditCards } = get()
     await repository.putCreditCard({
       id: newId(),
       name,
       limit,
+      blocked,
       color: CARD_COLORS[creditCards.length % CARD_COLORS.length],
       position: creditCards.length,
     })

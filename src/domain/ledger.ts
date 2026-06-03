@@ -20,6 +20,7 @@ function bestCardFor(amount: Cents, cards: CreditCard[], debt: Map<ID, Cents>): 
   let best: ID | undefined
   let bestAvail = -1
   for (const c of cards) {
+    if (c.blocked) continue // bloqueada: no se puede cargar
     const avail = c.limit - (debt.get(c.id) ?? 0)
     if (avail >= amount && avail > bestAvail) {
       bestAvail = avail

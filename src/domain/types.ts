@@ -47,6 +47,7 @@ export interface CreditCard {
   limit: Cents
   color: string
   position: number
+  blocked?: boolean // bloqueada: no se puede CARGAR (sacar dinero), pero sí pagar
 }
 
 /** accountId del líquido (débito/efectivo). Las tarjetas usan su propio id. */
