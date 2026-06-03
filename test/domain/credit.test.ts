@@ -110,30 +110,46 @@ describe('enrutado débito/crédito', () => {
     expect(computed.cardStates[0].available).toBe(450000)
   })
 
-  it('una tarjeta BLOQUEADA no se usa para cargar (el gasto cae a débito)', () => {
+  it('un evento de bloqueo apaga la tarjeta a partir de ahí', () => {
     const pts = computeLedger(
       [
         mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
-        mv({ name: 'compra', amount: -50000, creditEligible: true }),
+        mv({ name: 'compra A', amount: -50000, creditEligible: true }), // antes → crédito
+        mv({ name: 'bloquear', amount: 0, cardBlock: { cardId: 'visa', blocked: true } }),
+        mv({ name: 'compra B', amount: -50000, creditEligible: true }), // ya apagada → débito (rojo)
       ],
-      [{ ...card('visa', 500000), blocked: true }],
+      [card('visa', 500000)],
     )
-    expect(pts[1].chargedToCardId).toBeUndefined()
-    expect(pts[1].balanceAfter).toBe(-50000) // se fue a débito (rojo)
-    expect(pts[1].cardDebtAfter['visa']).toBe(0)
+    expect(pts[1].chargedToCardId).toBe('visa')
+    expect(pts[3].chargedToCardId).toBeUndefined()
+    expect(pts[3].balanceAfter).toBe(-50000)
   })
 
-  it('una tarjeta bloqueada SÍ puede pagarse', () => {
+  it('un evento de reactivación vuelve a encender la tarjeta', () => {
+    const pts = computeLedger(
+      [
+        mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
+        mv({ name: 'bloquear', amount: 0, cardBlock: { cardId: 'visa', blocked: true } }),
+        mv({ name: 'reactivar', amount: 0, cardBlock: { cardId: 'visa', blocked: false } }),
+        mv({ name: 'compra', amount: -50000, creditEligible: true }), // encendida → crédito
+      ],
+      [card('visa', 500000)],
+    )
+    expect(pts[3].chargedToCardId).toBe('visa')
+  })
+
+  it('una tarjeta apagada por evento SÍ puede pagarse', () => {
     const pts = computeLedger(
       [
         mv({ name: 'inicio', kind: 'anchor', amount: 100000 }),
         mv({ name: 'deuda real visa', kind: 'anchor', amount: 80000, accountId: 'visa' }),
+        mv({ name: 'bloquear', amount: 0, cardBlock: { cardId: 'visa', blocked: true } }),
         mv({ name: 'pago visa', amount: -50000, payCardId: 'visa' }),
       ],
-      [{ ...card('visa', 500000), blocked: true }],
+      [card('visa', 500000)],
     )
     const last = pts[pts.length - 1]
-    expect(last.cardDebtAfter['visa']).toBe(30000) // 800 - 500
-    expect(last.balanceAfter).toBe(50000) // 1000 - 500
+    expect(last.cardDebtAfter['visa']).toBe(30000)
+    expect(last.balanceAfter).toBe(50000)
   })
 })

@@ -15,12 +15,17 @@ export function sortMovements(movements: Movement[]): Movement[] {
   })
 }
 
-/** Tarjeta con MÁS crédito disponible que pueda cubrir `amount`. */
-function bestCardFor(amount: Cents, cards: CreditCard[], debt: Map<ID, Cents>): ID | undefined {
+/** Tarjeta encendida con MÁS crédito disponible que pueda cubrir `amount`. */
+function bestCardFor(
+  amount: Cents,
+  cards: CreditCard[],
+  debt: Map<ID, Cents>,
+  blocked: Map<ID, boolean>,
+): ID | undefined {
   let best: ID | undefined
   let bestAvail = -1
   for (const c of cards) {
-    if (c.blocked) continue // bloqueada: no se puede cargar
+    if (blocked.get(c.id)) continue // apagada: no se puede cargar
     const avail = c.limit - (debt.get(c.id) ?? 0)
     if (avail >= amount && avail > bestAvail) {
       bestAvail = avail
@@ -35,13 +40,20 @@ export function computeLedger(movements: Movement[], cards: CreditCard[] = []): 
   const points: LedgerPoint[] = []
   let liquid = 0
   const debt = new Map<ID, Cents>()
-  for (const c of cards) debt.set(c.id, 0)
+  const blocked = new Map<ID, boolean>()
+  for (const c of cards) {
+    debt.set(c.id, 0)
+    blocked.set(c.id, false) // todas encendidas al inicio; los eventos las apagan/encienden
+  }
 
   for (const m of ordered) {
     const before = liquid
     let charged: ID | undefined
 
-    if (m.kind === 'anchor') {
+    if (m.cardBlock) {
+      // evento: enciende/apaga una tarjeta a partir de aquí (no toca líquido ni deuda)
+      blocked.set(m.cardBlock.cardId, m.cardBlock.blocked)
+    } else if (m.kind === 'anchor') {
       // fija el saldo REAL de una cuenta (líquido por default, o una tarjeta)
       const acct = m.accountId ?? LIQUID
       if (acct === LIQUID) liquid = m.amount
@@ -57,7 +69,7 @@ export function computeLedger(movements: Movement[], cards: CreditCard[] = []): 
       // gasto: débito primero; crédito SOLO si pagar con débito te deja en rojo
       const x = -m.amount
       if (m.creditEligible && liquid - x < 0) {
-        const card = bestCardFor(x, cards, debt)
+        const card = bestCardFor(x, cards, debt, blocked)
         if (card) {
           debt.set(card, (debt.get(card) ?? 0) + x)
           charged = card
@@ -73,6 +85,7 @@ export function computeLedger(movements: Movement[], cards: CreditCard[] = []): 
       isAnchor: m.kind === 'anchor',
       chargedToCardId: charged,
       cardDebtAfter: Object.fromEntries(debt),
+      cardBlockedAfter: Object.fromEntries(blocked),
     })
   }
   return points

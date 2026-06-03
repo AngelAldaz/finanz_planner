@@ -47,7 +47,6 @@ export interface CreditCard {
   limit: Cents
   color: string
   position: number
-  blocked?: boolean // bloqueada: no se puede CARGAR (sacar dinero), pero sí pagar
 }
 
 /** accountId del líquido (débito/efectivo). Las tarjetas usan su propio id. */
@@ -91,6 +90,7 @@ export interface Movement {
   creditEligible?: boolean // gasto que PUEDE pagarse con crédito (si el líquido no alcanza)
   accountId?: ID // para anchor: 'liquid' (default) o un cardId (saldo real de la tarjeta)
   payCardId?: ID // delta que abona a esta tarjeta (pago → regresa crédito disponible)
+  cardBlock?: { cardId: ID; blocked: boolean } // evento: apaga/enciende una tarjeta a partir de aquí
   included: boolean // prender/apagar sin borrar
   source?: MovementSource
   order: number // orden dentro de la semana
@@ -119,6 +119,7 @@ export interface LedgerPoint {
   isAnchor: boolean
   chargedToCardId?: ID // si el gasto se pagó con crédito (el líquido no cambió)
   cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto
+  cardBlockedAfter: Record<ID, boolean> // estado encendida/apagada por tarjeta tras este punto
 }
 
 export interface WeekKey {
@@ -145,6 +146,7 @@ export interface CardState {
   card: CreditCard
   debt: Cents
   available: Cents
+  blocked: boolean // estado proyectado al final del horizonte
 }
 
 export interface ComputedScenario {

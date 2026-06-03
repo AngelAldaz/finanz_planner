@@ -53,10 +53,10 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     firstNegativeAt = p ? effectiveDate(p.movement) : undefined
   }
 
-  const lastDebt = points.length ? points[points.length - 1].cardDebtAfter : {}
+  const last = points.length ? points[points.length - 1] : undefined
   const cardStates: CardState[] = cards.map((c) => {
-    const debt = lastDebt[c.id] ?? 0
-    return { card: c, debt, available: c.limit - debt }
+    const debt = last?.cardDebtAfter[c.id] ?? 0
+    return { card: c, debt, available: c.limit - debt, blocked: last?.cardBlockedAfter[c.id] ?? false }
   })
 
   return {

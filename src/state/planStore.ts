@@ -28,6 +28,7 @@ export interface AddMovementInput {
   categoryId?: ID
   creditEligible?: boolean
   payCardId?: ID
+  cardBlock?: { cardId: ID; blocked: boolean }
 }
 
 interface PlanState {
@@ -52,7 +53,7 @@ interface PlanState {
   setRealBalance: (weekStart: ISODate, amount: number, name?: string, accountId?: ID) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
   deleteScenario: (id: ID) => Promise<void>
-  addCard: (name: string, limit: number, blocked?: boolean) => Promise<void>
+  addCard: (name: string, limit: number) => Promise<void>
   updateCard: (card: CreditCard) => Promise<void>
   deleteCard: (id: ID) => Promise<void>
 }
@@ -124,6 +125,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       categoryId: input.categoryId,
       creditEligible: input.creditEligible,
       payCardId: input.payCardId,
+      cardBlock: input.cardBlock,
       included: true,
       source: { kind: 'manual' },
       order,
@@ -203,13 +205,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     if (activeScenarioId === id && remaining[0]) await get().selectScenario(remaining[0].id)
   },
 
-  addCard: async (name, limit, blocked = false) => {
+  addCard: async (name, limit) => {
     const { creditCards } = get()
     await repository.putCreditCard({
       id: newId(),
       name,
       limit,
-      blocked,
       color: CARD_COLORS[creditCards.length % CARD_COLORS.length],
       position: creditCards.length,
     })
