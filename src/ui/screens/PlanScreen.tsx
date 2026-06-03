@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Anchor, Copy, Plus } from 'lucide-react'
+import { Anchor, Copy, Plus, X } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
 import { eachWeekStart, mondayOf, weekRangeLabel } from '../../domain/dates'
-import type { Category, ComputedScenario, ISODate, Movement } from '../../domain/types'
+import type { Category, ComputedScenario, ID, ISODate, Movement } from '../../domain/types'
 import { cn } from '../../lib/cn'
 
 export function PlanScreen() {
@@ -16,10 +16,12 @@ export function PlanScreen() {
   const horizon = usePlanStore((s) => s.horizon)
   const selectScenario = usePlanStore((s) => s.selectScenario)
   const duplicate = usePlanStore((s) => s.duplicateActiveScenario)
+  const deleteScenario = usePlanStore((s) => s.deleteScenario)
   const addMovement = usePlanStore((s) => s.addMovement)
   const updateMovement = usePlanStore((s) => s.updateMovement)
   const deleteMovement = usePlanStore((s) => s.deleteMovement)
   const toggleIncluded = usePlanStore((s) => s.toggleIncluded)
+  const setRealBalance = usePlanStore((s) => s.setRealBalance)
 
   const computed = useComputed()
   const balById = useMemo(
@@ -62,11 +64,24 @@ export function PlanScreen() {
     setDefaultMode(undefined)
     setSheetOpen(true)
   }
-  function handleSubmit(data: MovementSubmit) {
-    if (editing) {
-      updateMovement({
+
+  async function handleSubmit(data: MovementSubmit) {
+    const ws = data.weekStart
+    if (data.kind === 'anchor') {
+      // el saldo real se gestiona como "uno por semana, fijado al inicio"
+      if (editing) {
+        const editingWeek = mondayOf(editing.date ?? editing.weekStart ?? ws ?? horizon.start)
+        if (editing.kind !== 'anchor' || editingWeek !== ws) await deleteMovement(editing.id)
+      }
+      await setRealBalance(ws ?? horizon.start, data.amount, data.name)
+    } else if (editing && editing.kind === 'anchor') {
+      // convertir saldo real → movimiento normal
+      await deleteMovement(editing.id)
+      await addMovement(data)
+    } else if (editing) {
+      await updateMovement({
         ...editing,
-        kind: data.kind,
+        kind: 'delta',
         name: data.name,
         amount: data.amount,
         weekStart: data.weekStart,
@@ -74,7 +89,13 @@ export function PlanScreen() {
         categoryId: data.categoryId,
       })
     } else {
-      addMovement(data)
+      await addMovement(data)
+    }
+  }
+
+  function confirmDeleteScenario(id: ID, name: string) {
+    if (window.confirm(`¿Borrar el escenario "${name}"? Esto no se puede deshacer.`)) {
+      void deleteScenario(id)
     }
   }
 
@@ -82,18 +103,31 @@ export function PlanScreen() {
     <div className="space-y-5 pb-28">
       {/* switcher de escenarios */}
       <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1">
-        {scenarios.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => selectScenario(s.id)}
-            className={cn(
-              'shrink-0 rounded-chunky border-2 border-ink px-3 py-1.5 text-sm font-bold',
-              s.id === activeScenarioId ? 'bg-ink text-paper' : 'bg-surface',
-            )}
-          >
-            {s.name}
-          </button>
-        ))}
+        {scenarios.map((s) => {
+          const active = s.id === activeScenarioId
+          return (
+            <div
+              key={s.id}
+              className={cn(
+                'flex shrink-0 items-center rounded-chunky border-2 border-ink',
+                active ? 'bg-ink text-paper' : 'bg-surface',
+              )}
+            >
+              <button onClick={() => selectScenario(s.id)} className="py-1.5 pl-3 pr-2 text-sm font-bold">
+                {s.name}
+              </button>
+              {active && scenarios.length > 1 && (
+                <button
+                  onClick={() => confirmDeleteScenario(s.id, s.name)}
+                  aria-label="Borrar escenario"
+                  className="pr-2 text-paper/70 active:text-paper"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )
+        })}
         <button
           onClick={() => duplicate(`Escenario ${scenarios.length + 1}`)}
           aria-label="Duplicar escenario"

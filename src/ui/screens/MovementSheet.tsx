@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Drawer } from 'vaul'
 import { Trash2 } from 'lucide-react'
 import type { Category, Cents, ID, ISODate, Movement, MovementKind } from '../../domain/types'
-import { mondayOf, weekRangeLabel } from '../../domain/dates'
+import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { fromCents, toCents } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
@@ -28,6 +28,8 @@ interface Props {
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
 }
+
+const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
 
 function modeOf(m: Movement | null | undefined): SheetMode {
   if (!m) return 'gasto'
@@ -71,18 +73,30 @@ export function MovementSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const canSave = name.trim() !== '' && amount !== '' && !Number.isNaN(Number(amount))
+  const weekDays = useMemo(
+    () => (week ? Array.from({ length: 7 }, (_, i) => addDays(week, i)) : []),
+    [week],
+  )
+
+  const isReal = mode === 'real'
+  const canSave =
+    amount !== '' && !Number.isNaN(Number(amount)) && (isReal || name.trim() !== '')
+
+  function changeMode(next: SheetMode) {
+    setMode(next)
+    if (next === 'real') setDate('') // el saldo real se fija al inicio de la semana
+  }
 
   function submit() {
     if (!canSave) return
     const cents = toCents(Math.abs(Number(amount)))
     onSubmit({
-      kind: mode === 'real' ? 'anchor' : 'delta',
-      name: name.trim(),
+      kind: isReal ? 'anchor' : 'delta',
+      name: isReal ? name.trim() || 'Saldo real' : name.trim(),
       amount: mode === 'gasto' ? -cents : cents,
-      weekStart: date ? mondayOf(date) : week || undefined,
-      date: date || undefined,
-      categoryId: mode === 'real' ? undefined : categoryId,
+      weekStart: isReal ? week || undefined : date ? mondayOf(date) : week || undefined,
+      date: isReal ? undefined : date || undefined,
+      categoryId: isReal ? undefined : categoryId,
     })
     onOpenChange(false)
   }
@@ -103,7 +117,7 @@ export function MovementSheet({
               {MODES.map((mo) => (
                 <button
                   key={mo.id}
-                  onClick={() => setMode(mo.id)}
+                  onClick={() => changeMode(mo.id)}
                   className={cn(
                     'rounded-chunky border-2 border-ink py-2 text-sm font-bold transition-transform active:translate-y-0.5',
                     mode === mo.id ? mo.active + ' shadow-hard-sm' : 'bg-surface text-ink',
@@ -118,13 +132,13 @@ export function MovementSheet({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Gasolina, Don René…"
+                placeholder={isReal ? 'Saldo real' : 'Gasolina, Don René…'}
                 autoFocus={!movement}
                 className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
               />
             </Field>
 
-            <Field label={mode === 'real' ? 'Saldo real en tu cuenta' : 'Monto'}>
+            <Field label={isReal ? 'Saldo real en tu cuenta' : 'Monto'}>
               <div className="flex items-center gap-1">
                 <span className="font-mono text-lg text-muted">$</span>
                 <input
@@ -137,35 +151,55 @@ export function MovementSheet({
               </div>
             </Field>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Semana">
-                <select
-                  value={date ? '' : week}
-                  onChange={(e) => {
-                    setWeek(e.target.value)
-                    setDate('')
-                  }}
-                  disabled={!!date}
-                  className="w-full bg-transparent text-base outline-none disabled:opacity-40"
-                >
-                  {weeks.map((w) => (
-                    <option key={w} value={w}>
-                      {weekRangeLabel(w)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Fecha exacta (opcional)">
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-transparent text-base outline-none"
-                />
-              </Field>
-            </div>
+            <Field label="Semana">
+              <select
+                value={week}
+                onChange={(e) => {
+                  setWeek(e.target.value)
+                  setDate('') // el día elegido pertenecía a la semana anterior
+                }}
+                className="w-full bg-transparent text-base outline-none"
+              >
+                {weeks.map((w) => (
+                  <option key={w} value={w}>
+                    {weekRangeLabel(w)}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
-            {mode !== 'real' && categories.length > 0 && (
+            {isReal ? (
+              <p className="px-1 text-xs text-muted">
+                El saldo real se fija al inicio de la semana seleccionada.
+              </p>
+            ) : (
+              <div>
+                <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Día (opcional)
+                </span>
+                <div className="mt-1 grid grid-cols-7 gap-1">
+                  {weekDays.map((d, i) => {
+                    const active = date === d
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setDate(active ? '' : d)}
+                        className={cn(
+                          'flex flex-col items-center rounded-lg border-2 border-ink py-1 transition-transform active:translate-y-0.5',
+                          active ? 'bg-ink text-paper' : 'bg-surface',
+                        )}
+                      >
+                        <span className="text-[10px] font-semibold uppercase">{DOW[i]}</span>
+                        <span className="font-mono text-sm tnum">{parseISO(d).d}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!isReal && categories.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {categories.map((c) => (
                   <button
