@@ -3,30 +3,33 @@ import { Drawer } from 'vaul'
 import { Trash2 } from 'lucide-react'
 import type { CreditCard, ID } from '../../domain/types'
 import { fromCents, toCents } from '../../domain/money'
+import { cn } from '../../lib/cn'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   card?: CreditCard | null
-  onSave: (data: { id?: ID; name: string; limit: number }) => void
+  onSave: (data: { id?: ID; name: string; limit: number; blocked: boolean }) => void
   onDelete?: (id: ID) => void
 }
 
 export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props) {
   const [name, setName] = useState('')
   const [limit, setLimit] = useState('')
+  const [blocked, setBlocked] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setName(card?.name ?? '')
     setLimit(card ? String(fromCents(card.limit)) : '')
+    setBlocked(card?.blocked ?? false)
   }, [open, card])
 
   const canSave = name.trim() !== '' && limit !== '' && !Number.isNaN(Number(limit))
 
   function save() {
     if (!canSave) return
-    onSave({ id: card?.id, name: name.trim(), limit: toCents(Number(limit)) })
+    onSave({ id: card?.id, name: name.trim(), limit: toCents(Number(limit)), blocked })
     onOpenChange(false)
   }
 
@@ -68,6 +71,31 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
                 />
               </div>
             </label>
+
+            <button
+              onClick={() => setBlocked((v) => !v)}
+              className="flex w-full items-center justify-between rounded-chunky border-2 border-ink bg-surface px-3 py-2.5 text-left"
+            >
+              <span className="pr-3">
+                <span className="block text-sm font-semibold">Bloquear tarjeta</span>
+                <span className="block text-xs text-muted">
+                  No saldrá dinero de ella para gastos; sí podrás pagarla.
+                </span>
+              </span>
+              <span
+                className={cn(
+                  'flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
+                  blocked ? 'bg-neg' : 'bg-surface',
+                )}
+              >
+                <span
+                  className={cn(
+                    'h-4 w-4 rounded-full bg-ink transition-transform',
+                    blocked && 'translate-x-5',
+                  )}
+                />
+              </span>
+            </button>
 
             <div className="flex gap-2 pt-1">
               {card && onDelete && (

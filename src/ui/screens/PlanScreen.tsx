@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Copy,
   CreditCard as CardIcon,
+  Lock,
   Plus,
   X,
 } from 'lucide-react'
@@ -121,12 +122,12 @@ export function PlanScreen() {
     }
   }
 
-  function handleSaveCard(d: { id?: ID; name: string; limit: number }) {
+  function handleSaveCard(d: { id?: ID; name: string; limit: number; blocked: boolean }) {
     if (d.id) {
       const existing = creditCards.find((c) => c.id === d.id)
-      if (existing) void updateCard({ ...existing, name: d.name, limit: d.limit })
+      if (existing) void updateCard({ ...existing, name: d.name, limit: d.limit, blocked: d.blocked })
     } else {
-      void addCard(d.name, d.limit)
+      void addCard(d.name, d.limit, d.blocked)
     }
   }
 
@@ -340,19 +341,29 @@ function CardStrip({
             className="w-44 shrink-0 rounded-chunky border-2 border-ink bg-surface p-3 text-left shadow-hard-sm"
           >
             <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: card.color }} />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: card.color }} />
               <span className="truncate text-sm font-bold">{card.name}</span>
+              {card.blocked && <Lock size={12} className="shrink-0 text-muted" />}
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full border border-ink bg-paper">
-              <div className="h-full" style={{ width: `${pct}%`, background: card.color }} />
+              <div
+                className="h-full"
+                style={{ width: `${pct}%`, background: card.blocked ? '#8a857a' : card.color }}
+              />
             </div>
             <div className="mt-1.5 flex justify-between text-[11px]">
               <span className="text-neg">
                 debe <Money cents={debt} />
               </span>
-              <span className="text-pos">
-                <Money cents={available} /> libre
-              </span>
+              {card.blocked ? (
+                <span className="flex items-center gap-1 text-muted">
+                  <Lock size={10} /> bloqueada
+                </span>
+              ) : (
+                <span className="text-pos">
+                  <Money cents={available} /> libre
+                </span>
+              )}
             </div>
           </button>
         )
