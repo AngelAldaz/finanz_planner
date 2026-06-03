@@ -5,6 +5,7 @@ import type {
   CatalogItem,
   CatalogKind,
   Category,
+  CreditCard,
   ID,
   Movement,
   Plan,
@@ -48,6 +49,11 @@ export interface PlanRepository {
   listCatalogItems(catalog?: CatalogKind): Promise<CatalogItem[]>
   putCatalogItem(i: CatalogItem): Promise<void>
   deleteCatalogItem(id: ID): Promise<void>
+
+  // credit cards
+  listCreditCards(): Promise<CreditCard[]>
+  putCreditCard(c: CreditCard): Promise<void>
+  deleteCreditCard(id: ID): Promise<void>
 
   // bulk / sync seam
   isEmpty(): Promise<boolean>

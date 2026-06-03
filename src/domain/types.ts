@@ -41,6 +41,17 @@ export interface Category {
   kind?: 'income' | 'expense' | 'mixed'
 }
 
+export interface CreditCard {
+  id: ID
+  name: string
+  limit: Cents
+  color: string
+  position: number
+}
+
+/** accountId del líquido (débito/efectivo). Las tarjetas usan su propio id. */
+export const LIQUID = 'liquid'
+
 export interface Plan {
   id: ID
   name: string
@@ -76,6 +87,9 @@ export interface Movement {
   date?: ISODate // OPCIONAL: si la pones, cae sola en su semana
   weekStart?: ISODate // colocación por semana sin fecha (lunes)
   categoryId?: ID
+  creditEligible?: boolean // gasto que PUEDE pagarse con crédito (si el líquido no alcanza)
+  accountId?: ID // para anchor: 'liquid' (default) o un cardId (saldo real de la tarjeta)
+  payCardId?: ID // delta que abona a esta tarjeta (pago → regresa crédito disponible)
   included: boolean // prender/apagar sin borrar
   source?: MovementSource
   order: number // orden dentro de la semana
@@ -99,9 +113,11 @@ export interface Horizon {
 // ---------- view-models (NUNCA se persisten) ----------
 export interface LedgerPoint {
   movement: Movement
-  balanceBefore: Cents
-  balanceAfter: Cents
+  balanceBefore: Cents // líquido antes
+  balanceAfter: Cents // líquido después
   isAnchor: boolean
+  chargedToCardId?: ID // si el gasto se pagó con crédito (el líquido no cambió)
+  cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto
 }
 
 export interface WeekKey {
@@ -121,17 +137,25 @@ export interface WeekSummary {
   lowestAt?: ISODate
   hadAnchor: boolean
   goesNegative: boolean
+  cardDebtClosing: Record<ID, Cents> // deuda por tarjeta al cierre de la semana
+}
+
+export interface CardState {
+  card: CreditCard
+  debt: Cents
+  available: Cents
 }
 
 export interface ComputedScenario {
   scenarioId: ID
   points: LedgerPoint[]
   weeks: WeekSummary[]
-  finalBalance: Cents
+  finalBalance: Cents // líquido final
   minBalance: Cents
   minBalanceAt?: ISODate
   firstNegativeWeek?: WeekKey
   firstNegativeAt?: ISODate
+  cardStates: CardState[]
 }
 
 export interface ScenarioComparison {
@@ -156,4 +180,5 @@ export interface BackupBundle {
   recurrences: ScenarioRecurrence[]
   categories: Category[]
   catalogItems: CatalogItem[]
+  creditCards: CreditCard[]
 }

@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie'
 import type {
   CatalogItem,
   Category,
+  CreditCard,
   Movement,
   Plan,
   Scenario,
@@ -15,6 +16,7 @@ export class FinanzDB extends Dexie {
   recurrences!: Table<ScenarioRecurrence, string>
   categories!: Table<Category, string>
   catalogItems!: Table<CatalogItem, string>
+  creditCards!: Table<CreditCard, string>
 
   constructor(name = 'finanz') {
     super(name)
@@ -25,6 +27,9 @@ export class FinanzDB extends Dexie {
       recurrences: 'id, scenarioId',
       categories: 'id',
       catalogItems: 'id, catalog',
+    })
+    this.version(2).stores({
+      creditCards: 'id, position',
     })
   }
 }

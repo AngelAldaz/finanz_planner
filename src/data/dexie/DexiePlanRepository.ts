@@ -4,6 +4,7 @@ import type {
   CatalogItem,
   CatalogKind,
   Category,
+  CreditCard,
   ID,
   Movement,
   Plan,
@@ -144,20 +145,42 @@ export class DexiePlanRepository implements PlanRepository {
     await this.db.catalogItems.delete(id)
   }
 
+  // ----- credit cards -----
+  listCreditCards() {
+    return this.db.creditCards.orderBy('position').toArray()
+  }
+  async putCreditCard(c: CreditCard) {
+    await this.db.creditCards.put(c)
+  }
+  async deleteCreditCard(id: ID) {
+    await this.db.creditCards.delete(id)
+  }
+
   // ----- bulk / sync seam -----
   async isEmpty() {
     return (await this.db.plans.count()) === 0
   }
   async exportAll(): Promise<BackupBundle> {
-    const [plans, scenarios, movements, recurrences, categories, catalogItems] = await Promise.all([
-      this.db.plans.toArray(),
-      this.db.scenarios.toArray(),
-      this.db.movements.toArray(),
-      this.db.recurrences.toArray(),
-      this.db.categories.toArray(),
-      this.db.catalogItems.toArray(),
-    ])
-    return { version: 1, plans, scenarios, movements, recurrences, categories, catalogItems }
+    const [plans, scenarios, movements, recurrences, categories, catalogItems, creditCards] =
+      await Promise.all([
+        this.db.plans.toArray(),
+        this.db.scenarios.toArray(),
+        this.db.movements.toArray(),
+        this.db.recurrences.toArray(),
+        this.db.categories.toArray(),
+        this.db.catalogItems.toArray(),
+        this.db.creditCards.toArray(),
+      ])
+    return {
+      version: 1,
+      plans,
+      scenarios,
+      movements,
+      recurrences,
+      categories,
+      catalogItems,
+      creditCards,
+    }
   }
   async importAll(bundle: BackupBundle) {
     await this.db.transaction('rw', this.db.tables, async () => {
@@ -168,6 +191,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.recurrences.clear(),
         this.db.categories.clear(),
         this.db.catalogItems.clear(),
+        this.db.creditCards.clear(),
       ])
       await Promise.all([
         this.db.plans.bulkPut(bundle.plans),
@@ -176,6 +200,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.recurrences.bulkPut(bundle.recurrences),
         this.db.categories.bulkPut(bundle.categories),
         this.db.catalogItems.bulkPut(bundle.catalogItems),
+        this.db.creditCards.bulkPut(bundle.creditCards ?? []),
       ])
     })
   }

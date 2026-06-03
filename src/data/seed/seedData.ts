@@ -154,5 +154,6 @@ export function buildSeedBundle(now: string): BackupBundle {
     recurrences: [],
     categories: SEED_CATEGORIES,
     catalogItems: SEED_CATALOG,
+    creditCards: [],
   }
 }

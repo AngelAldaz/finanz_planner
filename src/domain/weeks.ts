@@ -52,6 +52,7 @@ export function weekSummaries(points: LedgerPoint[]): WeekSummary[] {
       lowestAt,
       hadAnchor,
       goesNegative,
+      cardDebtClosing: pts[pts.length - 1].cardDebtAfter,
     }
   })
 }

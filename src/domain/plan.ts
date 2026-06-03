@@ -1,5 +1,14 @@
-// Orquestador: arma el escenario calculado a partir de movimientos + recurrencias.
-import type { ComputedScenario, Horizon, ID, ISODate, Movement, ScenarioRecurrence } from './types'
+// Orquestador: arma el escenario calculado a partir de movimientos + recurrencias + tarjetas.
+import type {
+  CardState,
+  ComputedScenario,
+  CreditCard,
+  Horizon,
+  ID,
+  ISODate,
+  Movement,
+  ScenarioRecurrence,
+} from './types'
 import { computeLedger, effectiveDate } from './ledger'
 import { expandAllRecurrences } from './recurrence'
 import { weekSummaries } from './weeks'
@@ -8,11 +17,12 @@ export interface ScenarioInput {
   scenarioId?: ID
   movements: Movement[]
   recurrences?: ScenarioRecurrence[]
+  cards?: CreditCard[]
   horizon: Horizon
 }
 
 export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
-  const { movements, recurrences = [], horizon } = input
+  const { movements, recurrences = [], cards = [], horizon } = input
 
   // las instancias generadas que el usuario ya editó (mismo occurrenceKey) ceden ante las manuales
   const manualKeys = new Set(
@@ -22,7 +32,7 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     (g) => !manualKeys.has(g.source!.occurrenceKey!),
   )
 
-  const points = computeLedger([...movements, ...generated])
+  const points = computeLedger([...movements, ...generated], cards)
   const weeks = weekSummaries(points)
 
   let minBalance = points.length ? points[0].balanceAfter : 0
@@ -43,6 +53,12 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     firstNegativeAt = p ? effectiveDate(p.movement) : undefined
   }
 
+  const lastDebt = points.length ? points[points.length - 1].cardDebtAfter : {}
+  const cardStates: CardState[] = cards.map((c) => {
+    const debt = lastDebt[c.id] ?? 0
+    return { card: c, debt, available: c.limit - debt }
+  })
+
   return {
     scenarioId: input.scenarioId ?? '',
     points,
@@ -52,5 +68,6 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     minBalanceAt,
     firstNegativeWeek: firstNeg?.key,
     firstNegativeAt,
+    cardStates,
   }
 }
