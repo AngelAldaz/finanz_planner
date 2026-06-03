@@ -15,9 +15,8 @@ describe('App (smoke)', () => {
     expect(await screen.findByText('Realista')).toBeTruthy()
     expect(await screen.findByText(/Saldo líquido/i)).toBeTruthy()
     expect(await screen.findByText('25 al 31 mayo')).toBeTruthy()
-    // el anchor inicial (saldo real) y su etiqueta
+    // el anchor inicial (saldo real)
     expect(await screen.findByText('Dinero en tarjeta')).toBeTruthy()
-    expect(await screen.findByText('= saldo real')).toBeTruthy()
     // "Don René" recurre cada semana (6 veces en la semilla)
     expect(await screen.findAllByText('Don René')).toHaveLength(6)
   })

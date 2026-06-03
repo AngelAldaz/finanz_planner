@@ -1,5 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Anchor, Copy, CreditCard as CardIcon, Plus, X } from 'lucide-react'
+import {
+  Anchor,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Copy,
+  CreditCard as CardIcon,
+  Plus,
+  X,
+} from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
@@ -370,39 +378,72 @@ interface RowProps {
   onToggle: () => void
 }
 
+const TYPE_META = {
+  ingreso: { bg: 'bg-pos', fg: 'text-white', Icon: ArrowDownLeft },
+  gasto: { bg: 'bg-neg', fg: 'text-white', Icon: ArrowUpRight },
+  pago: { bg: 'bg-cobalt', fg: 'text-white', Icon: CardIcon },
+  real: { bg: 'bg-accent', fg: 'text-ink', Icon: Anchor },
+} as const
+
+function movementType(mv: Movement): keyof typeof TYPE_META {
+  if (mv.kind === 'anchor') return 'real'
+  if (mv.payCardId) return 'pago'
+  return mv.amount >= 0 ? 'ingreso' : 'gasto'
+}
+
 function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit, onToggle }: RowProps) {
+  const meta = TYPE_META[movementType(mv)]
+  const Icon = meta.Icon
   const isAnchor = mv.kind === 'anchor'
   const isCardAnchor = isAnchor && !!mv.accountId && mv.accountId !== LIQUID
   const anchorCard = isCardAnchor ? cardsById.get(mv.accountId!) : undefined
   const chargedCard = chargedToCardId ? cardsById.get(chargedToCardId) : undefined
   const payCard = mv.payCardId ? cardsById.get(mv.payCardId) : undefined
-  const dotColor = isCardAnchor
-    ? (anchorCard?.color ?? '#141414')
-    : (category?.color ?? '#141414')
 
   return (
-    <li className={cn('flex items-center gap-3 px-4 py-2.5', !mv.included && 'opacity-40')}>
-      <button onClick={onToggle} aria-label="Incluir/excluir" className="shrink-0 p-1">
+    <li
+      className={cn(
+        'flex items-center gap-3 px-4 py-2.5',
+        isAnchor && 'bg-accent/10',
+        !mv.included && 'opacity-40',
+      )}
+    >
+      {/* badge de tipo (verde ingreso · rojo gasto · azul pago · lima saldo real) — también prende/apaga */}
+      <button onClick={onToggle} aria-label={mv.included ? 'Excluir' : 'Incluir'} className="shrink-0">
         <span
-          className="block h-3.5 w-3.5 rounded-full border-2 border-ink"
-          style={{ background: mv.included ? dotColor : 'transparent' }}
-        />
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-lg border-2 border-ink',
+            mv.included ? `${meta.bg} shadow-hard-sm` : 'bg-surface',
+          )}
+        >
+          <Icon size={15} strokeWidth={2.75} className={mv.included ? meta.fg : 'text-muted'} />
+        </span>
       </button>
+
       <button onClick={onEdit} className="flex flex-1 items-center justify-between gap-2 text-left">
         <span className="min-w-0">
-          <span className="block truncate font-medium leading-tight">{mv.name}</span>
-          <span className="mt-0.5 flex flex-wrap gap-1">
-            {isCardAnchor && (
-              <Tag color="bg-accent text-ink">= saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
+          <span className="flex items-center gap-1.5">
+            {category && !isAnchor && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: category.color }}
+              />
             )}
-            {!isCardAnchor && isAnchor && <Tag color="bg-accent text-ink">= saldo real</Tag>}
+            <span className="truncate font-medium leading-tight">{mv.name}</span>
+          </span>
+          <span className="mt-0.5 flex flex-wrap gap-1 empty:hidden">
+            {isCardAnchor && (
+              <Tag color="bg-accent text-ink">saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
+            )}
             {chargedCard && <Tag color="bg-cobalt text-white">→ crédito {chargedCard.name}</Tag>}
-            {payCard && <Tag color="bg-ink text-paper">pago {payCard.name}</Tag>}
+            {payCard && <Tag color="bg-ink text-paper">{payCard.name}</Tag>}
           </span>
         </span>
         <span className="shrink-0 text-right">
           {isAnchor ? (
-            <Money cents={mv.amount} className="text-sm font-semibold" />
+            <span className="text-sm font-bold">
+              = <Money cents={mv.amount} />
+            </span>
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />
           )}
