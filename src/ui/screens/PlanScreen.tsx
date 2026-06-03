@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react'
-import { Anchor, Copy, Plus, X } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Anchor, Copy, CreditCard as CardIcon, Plus, X } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
+import { CardSheet } from './CardSheet'
 import { eachWeekStart, mondayOf, weekRangeLabel } from '../../domain/dates'
-import type { Category, ComputedScenario, ID, ISODate, Movement } from '../../domain/types'
+import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
+import { LIQUID } from '../../domain/types'
 import { cn } from '../../lib/cn'
 
 export function PlanScreen() {
   const scenarios = usePlanStore((s) => s.scenarios)
   const activeScenarioId = usePlanStore((s) => s.activeScenarioId)
   const categories = usePlanStore((s) => s.categories)
+  const creditCards = usePlanStore((s) => s.creditCards)
   const movements = usePlanStore((s) => s.movements)
   const horizon = usePlanStore((s) => s.horizon)
   const selectScenario = usePlanStore((s) => s.selectScenario)
@@ -22,16 +25,27 @@ export function PlanScreen() {
   const deleteMovement = usePlanStore((s) => s.deleteMovement)
   const toggleIncluded = usePlanStore((s) => s.toggleIncluded)
   const setRealBalance = usePlanStore((s) => s.setRealBalance)
+  const addCard = usePlanStore((s) => s.addCard)
+  const updateCard = usePlanStore((s) => s.updateCard)
+  const deleteCard = usePlanStore((s) => s.deleteCard)
 
   const computed = useComputed()
   const balById = useMemo(
     () => new Map(computed.points.map((p) => [p.movement.id, p.balanceAfter])),
     [computed],
   )
+  const chargedById = useMemo(
+    () =>
+      new Map(
+        computed.points.filter((p) => p.chargedToCardId).map((p) => [p.movement.id, p.chargedToCardId!]),
+      ),
+    [computed],
+  )
   const summaryByWeek = useMemo(
     () => new Map(computed.weeks.map((w) => [w.key.weekStart, w])),
     [computed],
   )
+  const cardsById = useMemo(() => new Map(creditCards.map((c) => [c.id, c])), [creditCards])
   const allWeeks = useMemo(() => eachWeekStart(horizon.start, horizon.end), [horizon])
 
   const weekMap = useMemo(() => {
@@ -51,6 +65,8 @@ export function PlanScreen() {
   const [editing, setEditing] = useState<Movement | null>(null)
   const [defaultWeek, setDefaultWeek] = useState<ISODate | undefined>(undefined)
   const [defaultMode, setDefaultMode] = useState<SheetMode | undefined>(undefined)
+  const [cardSheetOpen, setCardSheetOpen] = useState(false)
+  const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
 
   function openNew(week?: ISODate, mode?: SheetMode) {
     setEditing(null)
@@ -68,14 +84,16 @@ export function PlanScreen() {
   async function handleSubmit(data: MovementSubmit) {
     const ws = data.weekStart
     if (data.kind === 'anchor') {
-      // el saldo real se gestiona como "uno por semana, fijado al inicio"
+      const account = data.accountId ?? LIQUID
       if (editing) {
         const editingWeek = mondayOf(editing.date ?? editing.weekStart ?? ws ?? horizon.start)
-        if (editing.kind !== 'anchor' || editingWeek !== ws) await deleteMovement(editing.id)
+        const editingAccount = editing.accountId ?? LIQUID
+        if (editing.kind !== 'anchor' || editingWeek !== ws || editingAccount !== account) {
+          await deleteMovement(editing.id)
+        }
       }
-      await setRealBalance(ws ?? horizon.start, data.amount, data.name)
+      await setRealBalance(ws ?? horizon.start, data.amount, data.name, account)
     } else if (editing && editing.kind === 'anchor') {
-      // convertir saldo real → movimiento normal
       await deleteMovement(editing.id)
       await addMovement(data)
     } else if (editing) {
@@ -87,9 +105,20 @@ export function PlanScreen() {
         weekStart: data.weekStart,
         date: data.date,
         categoryId: data.categoryId,
+        creditEligible: data.creditEligible,
+        payCardId: data.payCardId,
       })
     } else {
       await addMovement(data)
+    }
+  }
+
+  function handleSaveCard(d: { id?: ID; name: string; limit: number }) {
+    if (d.id) {
+      const existing = creditCards.find((c) => c.id === d.id)
+      if (existing) void updateCard({ ...existing, name: d.name, limit: d.limit })
+    } else {
+      void addCard(d.name, d.limit)
     }
   }
 
@@ -113,7 +142,10 @@ export function PlanScreen() {
                 active ? 'bg-ink text-paper' : 'bg-surface',
               )}
             >
-              <button onClick={() => selectScenario(s.id)} className="py-1.5 pl-3 pr-2 text-sm font-bold">
+              <button
+                onClick={() => selectScenario(s.id)}
+                className="py-1.5 pl-3 pr-2 text-sm font-bold"
+              >
                 {s.name}
               </button>
               {active && scenarios.length > 1 && (
@@ -138,6 +170,18 @@ export function PlanScreen() {
       </div>
 
       <Hero computed={computed} />
+
+      <CardStrip
+        cards={computed.cardStates}
+        onAdd={() => {
+          setEditingCard(null)
+          setCardSheetOpen(true)
+        }}
+        onEdit={(c) => {
+          setEditingCard(c)
+          setCardSheetOpen(true)
+        }}
+      />
 
       <div className="space-y-4">
         {shownWeeks.map((ws) => {
@@ -176,7 +220,9 @@ export function PlanScreen() {
                     key={mv.id}
                     mv={mv}
                     balance={balById.get(mv.id)}
+                    chargedToCardId={chargedById.get(mv.id)}
                     category={categories.find((c) => c.id === mv.categoryId)}
+                    cardsById={cardsById}
                     onEdit={() => openEdit(mv)}
                     onToggle={() => toggleIncluded(mv.id)}
                   />
@@ -218,8 +264,16 @@ export function PlanScreen() {
         defaultMode={defaultMode}
         weeks={allWeeks}
         categories={categories}
+        cards={creditCards}
         onSubmit={handleSubmit}
         onDelete={deleteMovement}
+      />
+      <CardSheet
+        open={cardSheetOpen}
+        onOpenChange={setCardSheetOpen}
+        card={editingCard}
+        onSave={handleSaveCard}
+        onDelete={(id) => void deleteCard(id)}
       />
     </div>
   )
@@ -230,7 +284,7 @@ function Hero({ computed }: { computed: ComputedScenario }) {
   return (
     <div className="rounded-chunky border-2 border-ink bg-ink p-5 text-paper shadow-hard">
       <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
-        Saldo final proyectado
+        Saldo líquido final
       </p>
       <Money cents={computed.finalBalance} className="mt-1 block text-4xl font-bold text-paper" />
       <div className="mt-2 text-sm text-paper/70">
@@ -248,32 +302,103 @@ function Hero({ computed }: { computed: ComputedScenario }) {
   )
 }
 
+function CardStrip({
+  cards,
+  onAdd,
+  onEdit,
+}: {
+  cards: CardState[]
+  onAdd: () => void
+  onEdit: (c: CreditCard) => void
+}) {
+  if (cards.length === 0) {
+    return (
+      <button
+        onClick={onAdd}
+        className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-ink/40 py-3 text-sm font-semibold text-muted active:bg-surface"
+      >
+        <CardIcon size={16} /> Agregar tarjeta de crédito
+      </button>
+    )
+  }
+  return (
+    <div className="-mx-4 flex gap-3 overflow-x-auto px-4">
+      {cards.map(({ card, debt, available }) => {
+        const pct = card.limit > 0 ? Math.min(100, Math.max(0, (debt / card.limit) * 100)) : 0
+        return (
+          <button
+            key={card.id}
+            onClick={() => onEdit(card)}
+            className="w-44 shrink-0 rounded-chunky border-2 border-ink bg-surface p-3 text-left shadow-hard-sm"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: card.color }} />
+              <span className="truncate text-sm font-bold">{card.name}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full border border-ink bg-paper">
+              <div className="h-full" style={{ width: `${pct}%`, background: card.color }} />
+            </div>
+            <div className="mt-1.5 flex justify-between text-[11px]">
+              <span className="text-neg">
+                debe <Money cents={debt} />
+              </span>
+              <span className="text-pos">
+                <Money cents={available} /> libre
+              </span>
+            </div>
+          </button>
+        )
+      })}
+      <button
+        onClick={onAdd}
+        aria-label="Agregar tarjeta"
+        className="grid w-12 shrink-0 place-items-center rounded-chunky border-2 border-dashed border-ink/40 active:bg-surface"
+      >
+        <Plus size={18} />
+      </button>
+    </div>
+  )
+}
+
 interface RowProps {
   mv: Movement
   balance?: number
+  chargedToCardId?: ID
   category?: Category
+  cardsById: Map<ID, CreditCard>
   onEdit: () => void
   onToggle: () => void
 }
 
-function MovementRow({ mv, balance, category, onEdit, onToggle }: RowProps) {
+function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit, onToggle }: RowProps) {
   const isAnchor = mv.kind === 'anchor'
+  const isCardAnchor = isAnchor && !!mv.accountId && mv.accountId !== LIQUID
+  const anchorCard = isCardAnchor ? cardsById.get(mv.accountId!) : undefined
+  const chargedCard = chargedToCardId ? cardsById.get(chargedToCardId) : undefined
+  const payCard = mv.payCardId ? cardsById.get(mv.payCardId) : undefined
+  const dotColor = isCardAnchor
+    ? (anchorCard?.color ?? '#141414')
+    : (category?.color ?? '#141414')
+
   return (
     <li className={cn('flex items-center gap-3 px-4 py-2.5', !mv.included && 'opacity-40')}>
       <button onClick={onToggle} aria-label="Incluir/excluir" className="shrink-0 p-1">
         <span
           className="block h-3.5 w-3.5 rounded-full border-2 border-ink"
-          style={{ background: mv.included ? (category?.color ?? '#141414') : 'transparent' }}
+          style={{ background: mv.included ? dotColor : 'transparent' }}
         />
       </button>
       <button onClick={onEdit} className="flex flex-1 items-center justify-between gap-2 text-left">
         <span className="min-w-0">
           <span className="block truncate font-medium leading-tight">{mv.name}</span>
-          {isAnchor && (
-            <span className="mt-0.5 inline-block rounded bg-accent px-1 text-[10px] font-bold uppercase tracking-wide text-ink">
-              = saldo real
-            </span>
-          )}
+          <span className="mt-0.5 flex flex-wrap gap-1">
+            {isCardAnchor && (
+              <Tag color="bg-accent text-ink">= saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
+            )}
+            {!isCardAnchor && isAnchor && <Tag color="bg-accent text-ink">= saldo real</Tag>}
+            {chargedCard && <Tag color="bg-cobalt text-white">→ crédito {chargedCard.name}</Tag>}
+            {payCard && <Tag color="bg-ink text-paper">pago {payCard.name}</Tag>}
+          </span>
         </span>
         <span className="shrink-0 text-right">
           {isAnchor ? (
@@ -281,11 +406,24 @@ function MovementRow({ mv, balance, category, onEdit, onToggle }: RowProps) {
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />
           )}
-          {mv.included && balance != null && (
+          {!isCardAnchor && mv.included && balance != null && (
             <Money cents={balance} className="block text-xs text-muted" />
           )}
         </span>
       </button>
     </li>
+  )
+}
+
+function Tag({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'inline-block rounded px-1 text-[10px] font-bold uppercase tracking-wide',
+        color,
+      )}
+    >
+      {children}
+    </span>
   )
 }

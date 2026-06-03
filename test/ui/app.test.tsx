@@ -13,7 +13,7 @@ describe('App (smoke)', () => {
     expect(await screen.findByText('finanz.')).toBeTruthy()
     // tras sembrar (async) aparecen escenario, hero y la primera semana real
     expect(await screen.findByText('Realista')).toBeTruthy()
-    expect(await screen.findByText(/Saldo final/i)).toBeTruthy()
+    expect(await screen.findByText(/Saldo líquido/i)).toBeTruthy()
     expect(await screen.findByText('25 al 31 mayo')).toBeTruthy()
     // el anchor inicial (saldo real) y su etiqueta
     expect(await screen.findByText('Dinero en tarjeta')).toBeTruthy()

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Drawer } from 'vaul'
 import { Trash2 } from 'lucide-react'
-import type { Category, Cents, ID, ISODate, Movement, MovementKind } from '../../domain/types'
+import type { Category, Cents, CreditCard, ID, ISODate, Movement, MovementKind } from '../../domain/types'
+import { LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { fromCents, toCents } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
-export type SheetMode = 'gasto' | 'ingreso' | 'real'
+export type SheetMode = 'gasto' | 'ingreso' | 'pago' | 'real'
 
 export interface MovementSubmit {
   kind: MovementKind
@@ -15,6 +16,9 @@ export interface MovementSubmit {
   weekStart?: ISODate
   date?: ISODate
   categoryId?: ID
+  creditEligible?: boolean
+  payCardId?: ID
+  accountId?: ID
 }
 
 interface Props {
@@ -25,6 +29,7 @@ interface Props {
   defaultMode?: SheetMode
   weeks: ISODate[]
   categories: Category[]
+  cards: CreditCard[]
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
 }
@@ -34,14 +39,22 @@ const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
 function modeOf(m: Movement | null | undefined): SheetMode {
   if (!m) return 'gasto'
   if (m.kind === 'anchor') return 'real'
+  if (m.payCardId) return 'pago'
   return m.amount >= 0 ? 'ingreso' : 'gasto'
 }
 
-const MODES: { id: SheetMode; label: string; active: string }[] = [
-  { id: 'gasto', label: 'Gasto', active: 'bg-neg text-white' },
-  { id: 'ingreso', label: 'Ingreso', active: 'bg-pos text-white' },
-  { id: 'real', label: 'Saldo real', active: 'bg-accent text-ink' },
-]
+const LABELS: Record<SheetMode, string> = {
+  gasto: 'Gasto',
+  ingreso: 'Ingreso',
+  pago: 'Pago tarjeta',
+  real: 'Saldo real',
+}
+const ACTIVE_CLS: Record<SheetMode, string> = {
+  gasto: 'bg-neg text-white',
+  ingreso: 'bg-pos text-white',
+  pago: 'bg-cobalt text-white',
+  real: 'bg-accent text-ink',
+}
 
 export function MovementSheet({
   open,
@@ -51,6 +64,7 @@ export function MovementSheet({
   defaultMode,
   weeks,
   categories,
+  cards,
   onSubmit,
   onDelete,
 }: Props) {
@@ -60,6 +74,9 @@ export function MovementSheet({
   const [week, setWeek] = useState<ISODate>('')
   const [date, setDate] = useState<string>('')
   const [categoryId, setCategoryId] = useState<ID | undefined>(undefined)
+  const [creditEligible, setCreditEligible] = useState(false)
+  const [payCardId, setPayCardId] = useState<ID | undefined>(undefined)
+  const [account, setAccount] = useState<ID>(LIQUID)
 
   useEffect(() => {
     if (!open) return
@@ -70,6 +87,9 @@ export function MovementSheet({
     setWeek(m?.weekStart ?? (m?.date ? mondayOf(m.date) : (defaultWeek ?? weeks[0] ?? '')))
     setDate(m?.date ?? '')
     setCategoryId(m?.categoryId)
+    setCreditEligible(m?.creditEligible ?? false)
+    setPayCardId(m?.payCardId ?? cards[0]?.id)
+    setAccount(m?.accountId ?? LIQUID)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -78,26 +98,54 @@ export function MovementSheet({
     [week],
   )
 
+  const modes: SheetMode[] = ['gasto', 'ingreso', ...(cards.length ? (['pago'] as SheetMode[]) : []), 'real']
   const isReal = mode === 'real'
+  const isPago = mode === 'pago'
+  const cardName = (id?: ID) => cards.find((c) => c.id === id)?.name ?? 'tarjeta'
+
   const canSave =
-    amount !== '' && !Number.isNaN(Number(amount)) && (isReal || name.trim() !== '')
+    amount !== '' &&
+    !Number.isNaN(Number(amount)) &&
+    (isReal || isPago || name.trim() !== '') &&
+    (!isPago || !!payCardId)
 
   function changeMode(next: SheetMode) {
     setMode(next)
-    if (next === 'real') setDate('') // el saldo real se fija al inicio de la semana
+    if (next === 'real') setDate('')
   }
 
   function submit() {
     if (!canSave) return
     const cents = toCents(Math.abs(Number(amount)))
-    onSubmit({
-      kind: isReal ? 'anchor' : 'delta',
-      name: isReal ? name.trim() || 'Saldo real' : name.trim(),
-      amount: mode === 'gasto' ? -cents : cents,
-      weekStart: isReal ? week || undefined : date ? mondayOf(date) : week || undefined,
-      date: isReal ? undefined : date || undefined,
-      categoryId: isReal ? undefined : categoryId,
-    })
+    const wk = date && !isReal ? mondayOf(date) : week || undefined
+    if (isReal) {
+      onSubmit({
+        kind: 'anchor',
+        name: name.trim() || (account === LIQUID ? 'Saldo real' : `Saldo ${cardName(account)}`),
+        amount: cents,
+        accountId: account,
+        weekStart: week || undefined,
+      })
+    } else if (isPago) {
+      onSubmit({
+        kind: 'delta',
+        name: name.trim() || `Pago ${cardName(payCardId)}`,
+        amount: -cents,
+        payCardId,
+        weekStart: wk,
+        date: date || undefined,
+      })
+    } else {
+      onSubmit({
+        kind: 'delta',
+        name: name.trim(),
+        amount: mode === 'gasto' ? -cents : cents,
+        weekStart: wk,
+        date: date || undefined,
+        categoryId,
+        creditEligible: mode === 'gasto' ? creditEligible : undefined,
+      })
+    }
     onOpenChange(false)
   }
 
@@ -105,25 +153,25 @@ export function MovementSheet({
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[22px] border-2 border-ink bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
-          <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-ink/20" />
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col overflow-y-auto rounded-t-[22px] border-2 border-ink bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-ink/20" />
           <div className="space-y-3.5 p-5">
             <Drawer.Title className="font-display text-xl font-bold">
               {movement ? 'Editar movimiento' : 'Nuevo movimiento'}
             </Drawer.Title>
             <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
 
-            <div className="grid grid-cols-3 gap-2">
-              {MODES.map((mo) => (
+            <div className="grid grid-cols-2 gap-2">
+              {modes.map((mo) => (
                 <button
-                  key={mo.id}
-                  onClick={() => changeMode(mo.id)}
+                  key={mo}
+                  onClick={() => changeMode(mo)}
                   className={cn(
                     'rounded-chunky border-2 border-ink py-2 text-sm font-bold transition-transform active:translate-y-0.5',
-                    mode === mo.id ? mo.active + ' shadow-hard-sm' : 'bg-surface text-ink',
+                    mode === mo ? ACTIVE_CLS[mo] + ' shadow-hard-sm' : 'bg-surface text-ink',
                   )}
                 >
-                  {mo.label}
+                  {LABELS[mo]}
                 </button>
               ))}
             </div>
@@ -132,13 +180,25 @@ export function MovementSheet({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={isReal ? 'Saldo real' : 'Gasolina, Don René…'}
+                placeholder={
+                  isReal ? 'Saldo real' : isPago ? `Pago ${cardName(payCardId)}` : 'Gasolina, Don René…'
+                }
                 autoFocus={!movement}
                 className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
               />
             </Field>
 
-            <Field label={isReal ? 'Saldo real en tu cuenta' : 'Monto'}>
+            <Field
+              label={
+                isReal
+                  ? account === LIQUID
+                    ? 'Saldo real líquido (tu dinero)'
+                    : `Deuda real de ${cardName(account)}`
+                  : isPago
+                    ? 'Cuánto abonas'
+                    : 'Monto'
+              }
+            >
               <div className="flex items-center gap-1">
                 <span className="font-mono text-lg text-muted">$</span>
                 <input
@@ -151,12 +211,32 @@ export function MovementSheet({
               </div>
             </Field>
 
+            {/* selector de cuenta (saldo real) */}
+            {isReal && (
+              <Chips
+                label="¿De qué cuenta?"
+                options={[{ id: LIQUID, name: 'Líquido', color: '#141414' }, ...cards]}
+                value={account}
+                onChange={setAccount}
+              />
+            )}
+
+            {/* selector de tarjeta a pagar */}
+            {isPago && (
+              <Chips
+                label="¿Qué tarjeta pagas?"
+                options={cards}
+                value={payCardId}
+                onChange={(id) => setPayCardId(id)}
+              />
+            )}
+
             <Field label="Semana">
               <select
                 value={week}
                 onChange={(e) => {
                   setWeek(e.target.value)
-                  setDate('') // el día elegido pertenecía a la semana anterior
+                  setDate('')
                 }}
                 className="w-full bg-transparent text-base outline-none"
               >
@@ -191,7 +271,7 @@ export function MovementSheet({
                         )}
                       >
                         <span className="text-[10px] font-semibold uppercase">{DOW[i]}</span>
-                        <span className="font-mono text-sm tnum">{parseISO(d).d}</span>
+                        <span className="tnum font-mono text-sm">{parseISO(d).d}</span>
                       </button>
                     )
                   })}
@@ -199,7 +279,30 @@ export function MovementSheet({
               </div>
             )}
 
-            {!isReal && categories.length > 0 && (
+            {/* ¿pagable con crédito? (solo gasto, si hay tarjetas) */}
+            {mode === 'gasto' && cards.length > 0 && (
+              <button
+                onClick={() => setCreditEligible((v) => !v)}
+                className="flex w-full items-center justify-between rounded-chunky border-2 border-ink bg-surface px-3 py-2.5 text-left"
+              >
+                <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
+                <span
+                  className={cn(
+                    'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
+                    creditEligible ? 'bg-accent' : 'bg-surface',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'h-4 w-4 rounded-full bg-ink transition-transform',
+                      creditEligible && 'translate-x-5',
+                    )}
+                  />
+                </span>
+              </button>
+            )}
+
+            {(mode === 'gasto' || mode === 'ingreso') && categories.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {categories.map((c) => (
                   <button
@@ -242,6 +345,39 @@ export function MovementSheet({
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
+  )
+}
+
+function Chips({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { id: ID; name: string; color: string }[]
+  value?: ID
+  onChange: (id: ID) => void
+}) {
+  return (
+    <div>
+      <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-sm font-semibold',
+              value === o.id ? 'bg-ink text-paper' : 'bg-surface',
+            )}
+          >
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: o.color }} />
+            {o.name}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
