@@ -1,0 +1,121 @@
+// Expansión de reglas de recurrencia → movimientos con fecha calculada.
+import type { Horizon, Movement, RecurrenceRule, ScenarioRecurrence, Weekday } from './types'
+import {
+  addDays,
+  addMonths,
+  adjustToBusinessDay,
+  compareISO,
+  lastDayOfMonth,
+  parseISO,
+  toISO,
+  weekdayMon,
+} from './dates'
+
+const MAX = 1000 // tope de seguridad
+
+const minISO = (a: string, b: string) => (compareISO(a, b) <= 0 ? a : b)
+
+/** Devuelve las fechas (ISO) de una regla dentro del horizonte, ya ajustadas y deduplicadas. */
+export function ruleOccurrences(rule: RecurrenceRule, horizon: Horizon): string[] {
+  const genEnd = minISO(rule.endDate ?? horizon.end, horizon.end)
+  const start = rule.startDate
+  const nominal: string[] = []
+
+  if (rule.every) {
+    const { n, unit } = rule.every
+    let cur = start
+    let guard = 0
+    while (compareISO(cur, genEnd) <= 0 && guard++ < MAX) {
+      nominal.push(cur)
+      cur = unit === 'day' ? addDays(cur, n) : unit === 'week' ? addDays(cur, 7 * n) : addMonths(cur, n)
+    }
+  } else if (rule.weekdays && rule.weekdays.length) {
+    const set = new Set<Weekday>(rule.weekdays)
+    let weekMon = addDays(start, -weekdayMon(start)) // lunes de la semana de `start`
+    let guard = 0
+    while (compareISO(weekMon, genEnd) <= 0 && guard++ < MAX) {
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(weekMon, i)
+        if (set.has(i as Weekday) && compareISO(d, start) >= 0 && compareISO(d, genEnd) <= 0) {
+          nominal.push(d)
+        }
+      }
+      weekMon = addDays(weekMon, 7)
+    }
+  } else if (rule.daysOfMonth && rule.daysOfMonth.length) {
+    let { y, m } = parseISO(start)
+    let guard = 0
+    while (guard++ < MAX) {
+      if (compareISO(toISO(y, m, 1), genEnd) > 0) break
+      for (const spec of rule.daysOfMonth) {
+        const last = lastDayOfMonth(y, m)
+        const day = spec === 'last' ? last : Math.min(spec, last)
+        const d = toISO(y, m, day)
+        if (compareISO(d, start) >= 0 && compareISO(d, genEnd) <= 0) nominal.push(d)
+      }
+      m++
+      if (m > 12) {
+        m = 1
+        y++
+      }
+    }
+  } else if (rule.nthWeekday) {
+    let { y, m } = parseISO(start)
+    let guard = 0
+    while (guard++ < MAX) {
+      if (compareISO(toISO(y, m, 1), genEnd) > 0) break
+      const d = nthWeekdayOfMonth(y, m, rule.nthWeekday.weekday, rule.nthWeekday.nth)
+      if (d && compareISO(d, start) >= 0 && compareISO(d, genEnd) <= 0) nominal.push(d)
+      m++
+      if (m > 12) {
+        m = 1
+        y++
+      }
+    }
+  }
+
+  // ajuste de día hábil (la UI predetermina 'previous'; el motor honra lo que venga en la regla)
+  const dir = rule.businessDayAdjust ?? 'none'
+  const out = new Set<string>()
+  for (const d of nominal) {
+    const adj = adjustToBusinessDay(d, dir)
+    if (compareISO(adj, horizon.start) >= 0 && compareISO(adj, horizon.end) <= 0) out.add(adj)
+  }
+  return [...out].sort(compareISO)
+}
+
+function nthWeekdayOfMonth(
+  y: number,
+  m: number,
+  weekday: Weekday,
+  nth: 1 | 2 | 3 | 4 | 5 | 'last',
+): string | null {
+  const last = lastDayOfMonth(y, m)
+  const matches: number[] = []
+  for (let d = 1; d <= last; d++) {
+    if (weekdayMon(toISO(y, m, d)) === weekday) matches.push(d)
+  }
+  if (!matches.length) return null
+  const day = nth === 'last' ? matches[matches.length - 1] : matches[nth - 1]
+  return day ? toISO(y, m, day) : null
+}
+
+export function expandRecurrence(rec: ScenarioRecurrence, horizon: Horizon): Movement[] {
+  if (!rec.included) return []
+  return ruleOccurrences(rec.rule, horizon).map((date, i) => ({
+    id: `${rec.id}:${date}`,
+    scenarioId: rec.scenarioId,
+    kind: 'delta' as const,
+    name: rec.name,
+    amount: rec.amount,
+    date,
+    categoryId: rec.categoryId,
+    included: true,
+    source: { kind: 'recurrence' as const, ruleId: rec.id, occurrenceKey: `${rec.id}@${date}` },
+    order: i,
+  }))
+}
+
+export function expandAllRecurrences(recs: ScenarioRecurrence[], horizon: Horizon): Movement[] {
+  return recs.flatMap((r) => expandRecurrence(r, horizon))
+}
