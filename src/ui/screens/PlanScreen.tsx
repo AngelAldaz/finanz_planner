@@ -500,17 +500,17 @@ function MovementRow({
       >
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
-            {mv.date && (
-              <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
-                {dayLabel(mv.date)}
-              </span>
-            )}
             {category && !isAnchor && !isBlock && (
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: category.color }} />
             )}
             <span className="truncate font-medium leading-tight">{mv.name}</span>
           </span>
-          <span className="mt-0.5 flex flex-wrap gap-1 empty:hidden">
+          <span className="mt-0.5 flex flex-wrap items-center gap-1.5 empty:hidden">
+            {mv.date && (
+              <span className="font-mono text-[11px] tabular-nums text-muted">
+                {dayLabel(mv.date)}
+              </span>
+            )}
             {isCardAnchor && (
               <Tag color="bg-accent text-ink">saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
             )}
