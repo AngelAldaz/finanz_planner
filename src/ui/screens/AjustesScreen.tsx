@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Download, Upload } from 'lucide-react'
+import { Cloud, Download, LogOut, RefreshCw, Upload } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useUiStore } from '../../state/uiStore'
+import { useCloudStore } from '../../state/cloudStore'
 import { repository } from '../../data'
 import { fromCents, toCents } from '../../domain/money'
 import { hasPin, removePin, setPin } from '../../lib/pin'
@@ -53,6 +54,8 @@ export function AjustesScreen() {
 
   return (
     <div className="space-y-5 pb-28">
+      <CloudSection />
+
       <Card title="Apariencia">
         <div className="grid grid-cols-3 gap-2">
           {THEMES.map((t) => (
@@ -190,6 +193,102 @@ export function AjustesScreen() {
 
       <p className="px-1 text-center text-xs text-muted">finanz · tus datos viven solo en este dispositivo</p>
     </div>
+  )
+}
+
+function CloudSection() {
+  const configured = useCloudStore((s) => s.configured)
+  const email = useCloudStore((s) => s.email)
+  const status = useCloudStore((s) => s.status)
+  const error = useCloudStore((s) => s.error)
+  const signIn = useCloudStore((s) => s.signIn)
+  const signUp = useCloudStore((s) => s.signUp)
+  const signOut = useCloudStore((s) => s.signOut)
+  const syncNow = useCloudStore((s) => s.syncNow)
+  const [mail, setMail] = useState('')
+  const [pwd, setPwd] = useState('')
+
+  if (!configured) {
+    return (
+      <Card title="Nube (respaldo y sync)">
+        <p className="text-sm text-muted">
+          Hoy tus datos viven solo en este dispositivo. Para respaldarlos y sincronizarlos entre tu
+          iPhone y tu compu, activa Supabase: crea un proyecto gratis, corre el SQL y pega tus 2
+          llaves en <span className="font-mono">.env</span> (ver <span className="font-semibold">SUPABASE.md</span>).
+        </p>
+      </Card>
+    )
+  }
+
+  if (!email) {
+    return (
+      <Card title="Cuenta y nube">
+        <Field label="Correo">
+          <input
+            value={mail}
+            onChange={(e) => setMail(e.target.value)}
+            type="email"
+            autoComplete="email"
+            className="w-full bg-transparent text-base outline-none"
+          />
+        </Field>
+        <Field label="Contraseña">
+          <input
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+            className="w-full bg-transparent text-base outline-none"
+          />
+        </Field>
+        {error && <p className="px-1 text-sm font-semibold text-neg">{error}</p>}
+        <div className="flex gap-2">
+          <button
+            onClick={() => void signUp(mail, pwd)}
+            disabled={status === 'syncing'}
+            className="flex-1 rounded-chunky border-2 border-line bg-surface py-2.5 text-sm font-bold disabled:opacity-50"
+          >
+            Crear cuenta
+          </button>
+          <button
+            onClick={() => void signIn(mail, pwd)}
+            disabled={status === 'syncing'}
+            className="flex-1 rounded-chunky border-2 border-line bg-accent py-2.5 text-sm font-bold text-ink shadow-hard-sm disabled:opacity-50"
+          >
+            Entrar
+          </button>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title="Cuenta y nube">
+      <div className="flex items-center gap-2 text-sm">
+        <Cloud size={16} className="text-pos" />
+        <span className="min-w-0 flex-1 truncate font-semibold">{email}</span>
+        <span className="text-xs text-muted">
+          {status === 'syncing' ? 'Sincronizando…' : status === 'error' ? 'Error' : 'Sincronizado ✓'}
+        </span>
+      </div>
+      {error && <p className="px-1 text-sm font-semibold text-neg">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => void syncNow()}
+          disabled={status === 'syncing'}
+          className="flex flex-1 items-center justify-center gap-2 rounded-chunky border-2 border-line bg-surface py-2.5 text-sm font-bold disabled:opacity-50"
+        >
+          <RefreshCw size={15} /> Sincronizar
+        </button>
+        <button
+          onClick={() => void signOut()}
+          aria-label="Cerrar sesión"
+          className="flex items-center justify-center rounded-chunky border-2 border-line bg-surface px-4 py-2.5 text-sm font-bold text-neg"
+        >
+          <LogOut size={15} />
+        </button>
+      </div>
+    </Card>
   )
 }
 

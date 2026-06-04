@@ -4,12 +4,14 @@ import { useUiStore } from './state/uiStore'
 import { PlanScreen } from './ui/screens/PlanScreen'
 import { EscenariosScreen } from './ui/screens/EscenariosScreen'
 import { CategoriasScreen } from './ui/screens/CategoriasScreen'
-import { AjustesScreen } from './ui/screens/AjustesScreen'
 import { LockScreen } from './ui/screens/LockScreen'
 
-// Recharts es pesado → carga diferida (solo al abrir Gráficas)
+// chunks diferidos (Recharts y Supabase son pesados → solo al abrir su pestaña)
 const ChartsScreen = lazy(() =>
   import('./ui/screens/ChartsScreen').then((m) => ({ default: m.ChartsScreen })),
+)
+const AjustesScreen = lazy(() =>
+  import('./ui/screens/AjustesScreen').then((m) => ({ default: m.AjustesScreen })),
 )
 
 type Tab = 'plan' | 'escenarios' | 'graficas' | 'catalogos' | 'ajustes'
@@ -32,6 +34,13 @@ export default function App() {
   useEffect(() => {
     void init()
   }, [init])
+
+  // arranca la nube (auth + sync) solo si pegaste tus llaves de Supabase
+  useEffect(() => {
+    if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      void import('./state/cloudStore').then((m) => m.useCloudStore.getState().start())
+    }
+  }, [])
 
   if (locked) return <LockScreen onUnlock={() => setLocked(false)} />
 
@@ -56,7 +65,9 @@ export default function App() {
         ) : tab === 'catalogos' ? (
           <CategoriasScreen />
         ) : tab === 'ajustes' ? (
-          <AjustesScreen />
+          <Suspense fallback={<Loading />}>
+            <AjustesScreen />
+          </Suspense>
         ) : (
           <Placeholder tab={tab} />
         )}
