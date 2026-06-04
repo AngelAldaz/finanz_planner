@@ -3,6 +3,8 @@ import {
   Anchor,
   ArrowDownLeft,
   ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
   Copy,
   CreditCard as CardIcon,
   Lock,
@@ -15,7 +17,7 @@ import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
 import { CardSheet } from './CardSheet'
-import { eachWeekStart, mondayOf, weekRangeLabel } from '../../domain/dates'
+import { dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { sortMovements } from '../../domain/ledger'
 import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
@@ -72,12 +74,29 @@ export function PlanScreen() {
   }, [movements, horizon])
   const shownWeeks = useMemo(() => [...weekMap.keys()].sort(), [weekMap])
 
+  // semana en curso (según hoy) → las anteriores se ocultan y quedan bloqueadas
+  const currentWeek = useMemo(() => {
+    const d = new Date()
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return mondayOf(iso)
+  }, [])
+  const pastWeeks = useMemo(() => shownWeeks.filter((w) => w < currentWeek), [shownWeeks, currentWeek])
+  const visibleWeeks = useMemo(
+    () => shownWeeks.filter((w) => w >= currentWeek),
+    [shownWeeks, currentWeek],
+  )
+  const editableWeeks = useMemo(() => {
+    const future = allWeeks.filter((w) => w >= currentWeek)
+    return future.length ? future : allWeeks
+  }, [allWeeks, currentWeek])
+
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Movement | null>(null)
   const [defaultWeek, setDefaultWeek] = useState<ISODate | undefined>(undefined)
   const [defaultMode, setDefaultMode] = useState<SheetMode | undefined>(undefined)
   const [cardSheetOpen, setCardSheetOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
+  const [showPast, setShowPast] = useState(false)
 
   function openNew(week?: ISODate, mode?: SheetMode) {
     setEditing(null)
@@ -139,6 +158,77 @@ export function PlanScreen() {
     }
   }
 
+  function renderWeek(ws: ISODate, readOnly: boolean) {
+    const summary = summaryByWeek.get(ws)
+    const rows = weekMap.get(ws) ?? []
+    return (
+      <section
+        key={ws}
+        className={cn(
+          'overflow-hidden rounded-chunky border-2 border-ink bg-surface shadow-hard',
+          readOnly && 'opacity-75',
+        )}
+      >
+        <header className="border-b-2 border-ink bg-paper px-4 py-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="flex items-baseline gap-1.5 font-display text-sm font-bold uppercase tracking-wide">
+              <span>{weekRangeLabel(ws)}</span>
+              <span className="text-[10px] font-semibold text-muted">{parseISO(ws).y}</span>
+              {readOnly && <Lock size={11} className="self-center text-muted" />}
+            </h2>
+            {summary && <Money cents={summary.closingBalance} className="text-lg font-bold" />}
+          </div>
+          {summary && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
+              <span className="text-pos">
+                ↑ <Money cents={summary.totalIn} />
+              </span>
+              <span className="text-neg">
+                ↓ <Money cents={Math.abs(summary.totalOut)} />
+              </span>
+              <span className={cn(summary.goesNegative && 'font-bold text-neg')}>
+                mín <Money cents={summary.lowestBalance} />
+              </span>
+            </div>
+          )}
+        </header>
+
+        <ul className="divide-y divide-ink/10">
+          {rows.map((mv) => (
+            <MovementRow
+              key={mv.id}
+              mv={mv}
+              balance={balById.get(mv.id)}
+              chargedToCardId={chargedById.get(mv.id)}
+              category={categories.find((c) => c.id === mv.categoryId)}
+              cardsById={cardsById}
+              readOnly={readOnly}
+              onEdit={readOnly ? undefined : () => openEdit(mv)}
+              onToggle={readOnly ? undefined : () => toggleIncluded(mv.id)}
+            />
+          ))}
+        </ul>
+
+        {!readOnly && (
+          <div className="flex items-center gap-1 border-t-2 border-ink/10 p-1.5">
+            <button
+              onClick={() => openNew(ws)}
+              className="flex-1 rounded-lg py-2 text-sm font-semibold text-muted active:bg-paper"
+            >
+              + Movimiento
+            </button>
+            <button
+              onClick={() => openNew(ws, 'real')}
+              className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-muted active:bg-paper"
+            >
+              <Anchor size={14} /> Saldo real
+            </button>
+          </div>
+        )}
+      </section>
+    )
+  }
+
   return (
     <div className="space-y-5 pb-28">
       {/* switcher de escenarios */}
@@ -194,70 +284,24 @@ export function PlanScreen() {
         }}
       />
 
-      <div className="space-y-4">
-        {shownWeeks.map((ws) => {
-          const summary = summaryByWeek.get(ws)
-          const rows = weekMap.get(ws) ?? []
-          return (
-            <section
-              key={ws}
-              className="overflow-hidden rounded-chunky border-2 border-ink bg-surface shadow-hard"
-            >
-              <header className="border-b-2 border-ink bg-paper px-4 py-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h2 className="font-display text-sm font-bold uppercase tracking-wide">
-                    {weekRangeLabel(ws)}
-                  </h2>
-                  {summary && <Money cents={summary.closingBalance} className="text-lg font-bold" />}
-                </div>
-                {summary && (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
-                    <span className="text-pos">
-                      ↑ <Money cents={summary.totalIn} />
-                    </span>
-                    <span className="text-neg">
-                      ↓ <Money cents={Math.abs(summary.totalOut)} />
-                    </span>
-                    <span className={cn(summary.goesNegative && 'font-bold text-neg')}>
-                      mín <Money cents={summary.lowestBalance} />
-                    </span>
-                  </div>
-                )}
-              </header>
+      {pastWeeks.length > 0 && (
+        <div className="space-y-4">
+          <button
+            onClick={() => setShowPast((v) => !v)}
+            className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-ink/40 py-2.5 text-sm font-semibold text-muted active:bg-surface"
+          >
+            {showPast ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {showPast ? 'Ocultar' : 'Ver'} {pastWeeks.length}{' '}
+            {pastWeeks.length === 1 ? 'semana pasada' : 'semanas pasadas'}
+            <Lock size={12} />
+          </button>
+          {showPast && (
+            <div className="space-y-4">{pastWeeks.map((ws) => renderWeek(ws, true))}</div>
+          )}
+        </div>
+      )}
 
-              <ul className="divide-y divide-ink/10">
-                {rows.map((mv) => (
-                  <MovementRow
-                    key={mv.id}
-                    mv={mv}
-                    balance={balById.get(mv.id)}
-                    chargedToCardId={chargedById.get(mv.id)}
-                    category={categories.find((c) => c.id === mv.categoryId)}
-                    cardsById={cardsById}
-                    onEdit={() => openEdit(mv)}
-                    onToggle={() => toggleIncluded(mv.id)}
-                  />
-                ))}
-              </ul>
-
-              <div className="flex items-center gap-1 border-t-2 border-ink/10 p-1.5">
-                <button
-                  onClick={() => openNew(ws)}
-                  className="flex-1 rounded-lg py-2 text-sm font-semibold text-muted active:bg-paper"
-                >
-                  + Movimiento
-                </button>
-                <button
-                  onClick={() => openNew(ws, 'real')}
-                  className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-muted active:bg-paper"
-                >
-                  <Anchor size={14} /> Saldo real
-                </button>
-              </div>
-            </section>
-          )
-        })}
-      </div>
+      <div className="space-y-4">{visibleWeeks.map((ws) => renderWeek(ws, false))}</div>
 
       <button
         onClick={() => openNew()}
@@ -273,7 +317,7 @@ export function PlanScreen() {
         movement={editing}
         defaultWeek={defaultWeek}
         defaultMode={defaultMode}
-        weeks={allWeeks}
+        weeks={editableWeeks}
         categories={categories}
         cards={creditCards}
         onSubmit={handleSubmit}
@@ -387,8 +431,9 @@ interface RowProps {
   chargedToCardId?: ID
   category?: Category
   cardsById: Map<ID, CreditCard>
-  onEdit: () => void
-  onToggle: () => void
+  readOnly?: boolean
+  onEdit?: () => void
+  onToggle?: () => void
 }
 
 const TYPE_META = {
@@ -406,7 +451,16 @@ function movementType(mv: Movement): keyof typeof TYPE_META {
   return mv.amount >= 0 ? 'ingreso' : 'gasto'
 }
 
-function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit, onToggle }: RowProps) {
+function MovementRow({
+  mv,
+  balance,
+  chargedToCardId,
+  category,
+  cardsById,
+  readOnly,
+  onEdit,
+  onToggle,
+}: RowProps) {
   const meta = TYPE_META[movementType(mv)]
   const isBlock = !!mv.cardBlock
   const Icon = isBlock ? (mv.cardBlock!.blocked ? Lock : Unlock) : meta.Icon
@@ -437,14 +491,22 @@ function MovementRow({ mv, balance, chargedToCardId, category, cardsById, onEdit
         </span>
       </button>
 
-      <button onClick={onEdit} className="flex flex-1 items-center justify-between gap-2 text-left">
+      <button
+        onClick={onEdit}
+        className={cn(
+          'flex flex-1 items-center justify-between gap-2 text-left',
+          readOnly && 'cursor-default',
+        )}
+      >
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
+            {mv.date && (
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                {dayLabel(mv.date)}
+              </span>
+            )}
             {category && !isAnchor && !isBlock && (
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: category.color }}
-              />
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: category.color }} />
             )}
             <span className="truncate font-medium leading-tight">{mv.name}</span>
           </span>

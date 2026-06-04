@@ -1,9 +1,16 @@
 // @vitest-environment happy-dom
 import 'fake-indexeddb/auto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import App from '../../src/App'
 
+// Fija "hoy" antes del horizonte de la semilla → todas las semanas visibles (determinista).
+beforeAll(() => {
+  // solo falsear Date (no los timers, que fake-indexeddb necesita reales)
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-05-20T12:00:00Z'))
+})
+afterAll(() => vi.useRealTimers())
 afterEach(cleanup)
 
 describe('App (smoke)', () => {
