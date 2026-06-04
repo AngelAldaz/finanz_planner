@@ -34,7 +34,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[22px] border-2 border-ink bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[22px] border-2 border-line bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
           <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-ink/20" />
           <div className="space-y-3.5 p-5">
             <Drawer.Title className="font-display text-xl font-bold">
@@ -42,7 +42,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
             </Drawer.Title>
             <Drawer.Description className="sr-only">Datos de la tarjeta</Drawer.Description>
 
-            <label className="block rounded-chunky border-2 border-ink bg-surface px-3 py-2">
+            <label className="block rounded-chunky border-2 border-line bg-surface px-3 py-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">Nombre</span>
               <input
                 value={name}
@@ -53,7 +53,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
               />
             </label>
 
-            <label className="block rounded-chunky border-2 border-ink bg-surface px-3 py-2">
+            <label className="block rounded-chunky border-2 border-line bg-surface px-3 py-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">
                 Límite de crédito
               </span>
@@ -81,7 +81,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
                     onOpenChange(false)
                   }}
                   aria-label="Eliminar tarjeta"
-                  className="flex items-center justify-center rounded-chunky border-2 border-ink bg-surface px-4 py-3 text-neg active:translate-y-0.5"
+                  className="flex items-center justify-center rounded-chunky border-2 border-line bg-surface px-4 py-3 text-neg active:translate-y-0.5"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -89,7 +89,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
               <button
                 onClick={save}
                 disabled={!canSave}
-                className="flex-1 rounded-chunky border-2 border-ink bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
+                className="flex-1 rounded-chunky border-2 border-line bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
               >
                 {card ? 'Guardar' : 'Agregar tarjeta'}
               </button>

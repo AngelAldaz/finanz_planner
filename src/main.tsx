@@ -2,6 +2,13 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
+import { applyTheme, getThemePref } from './lib/theme'
+
+// aplica el tema antes de pintar (evita parpadeo)
+applyTheme(getThemePref())
+window
+  .matchMedia?.('(prefers-color-scheme: dark)')
+  .addEventListener?.('change', () => getThemePref() === 'auto' && applyTheme('auto'))
 
 // Tipografías self-host (offline en la PWA)
 import '@fontsource/space-grotesk/500.css'

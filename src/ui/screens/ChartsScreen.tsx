@@ -69,7 +69,7 @@ export function ChartsScreen() {
     <div className="space-y-5 pb-28">
       <div
         className={cn(
-          'rounded-chunky border-2 border-ink p-4 shadow-hard',
+          'rounded-chunky border-2 border-line p-4 shadow-hard',
           alertWeek ? 'bg-neg text-white' : 'bg-pos text-white',
         )}
       >
@@ -86,7 +86,7 @@ export function ChartsScreen() {
             Tu saldo se mantiene por arriba de {threshold > 0 ? money(fromCents(threshold)) : '$0'} ✓
           </p>
         )}
-        <label className="mt-3 flex items-center gap-2 rounded-chunky border-2 border-ink bg-surface px-3 py-2 text-ink">
+        <label className="mt-3 flex items-center gap-2 rounded-chunky border-2 border-line bg-surface px-3 py-2 text-fg">
           <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
             Avísame si bajo de
           </span>
@@ -176,7 +176,7 @@ export function ChartsScreen() {
 
 function ChartCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-chunky border-2 border-ink bg-surface p-4 shadow-hard">
+    <section className="rounded-chunky border-2 border-line bg-surface p-4 shadow-hard">
       <h2 className="mb-2 font-display text-sm font-bold uppercase tracking-wide">{title}</h2>
       {children}
     </section>

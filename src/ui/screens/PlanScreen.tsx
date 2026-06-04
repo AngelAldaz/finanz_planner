@@ -179,11 +179,11 @@ export function PlanScreen() {
       <section
         key={ws}
         className={cn(
-          'overflow-hidden rounded-chunky border-2 border-ink bg-surface shadow-hard',
+          'overflow-hidden rounded-chunky border-2 border-line bg-surface shadow-hard',
           readOnly && 'opacity-75',
         )}
       >
-        <header className="border-b-2 border-ink bg-paper px-4 py-3">
+        <header className="border-b-2 border-line bg-canvas px-4 py-3">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="flex items-baseline gap-1.5 font-display text-sm font-bold uppercase tracking-wide">
               <span>{weekRangeLabel(ws)}</span>
@@ -207,7 +207,7 @@ export function PlanScreen() {
           )}
         </header>
 
-        <ul className="divide-y divide-ink/10">
+        <ul className="divide-y divide-line/10">
           {rows.map((mv) => (
             <MovementRow
               key={mv.id}
@@ -224,16 +224,16 @@ export function PlanScreen() {
         </ul>
 
         {!readOnly && (
-          <div className="flex items-center gap-1 border-t-2 border-ink/10 p-1.5">
+          <div className="flex items-center gap-1 border-t-2 border-line/10 p-1.5">
             <button
               onClick={() => openNew(ws)}
-              className="flex-1 rounded-lg py-2 text-sm font-semibold text-muted active:bg-paper"
+              className="flex-1 rounded-lg py-2 text-sm font-semibold text-muted active:bg-canvas"
             >
               + Movimiento
             </button>
             <button
               onClick={() => openNew(ws, 'real')}
-              className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-muted active:bg-paper"
+              className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-muted active:bg-canvas"
             >
               <Anchor size={14} /> Saldo real
             </button>
@@ -253,7 +253,7 @@ export function PlanScreen() {
             <div
               key={s.id}
               className={cn(
-                'flex shrink-0 items-center rounded-chunky border-2 border-ink',
+                'flex shrink-0 items-center rounded-chunky border-2 border-line',
                 active ? 'bg-ink text-paper' : 'bg-surface',
               )}
             >
@@ -278,7 +278,7 @@ export function PlanScreen() {
         <button
           onClick={() => duplicate(`Escenario ${scenarios.length + 1}`)}
           aria-label="Duplicar escenario"
-          className="shrink-0 rounded-chunky border-2 border-ink bg-surface p-2 active:translate-y-0.5"
+          className="shrink-0 rounded-chunky border-2 border-line bg-surface p-2 active:translate-y-0.5"
         >
           <Copy size={16} />
         </button>
@@ -302,7 +302,7 @@ export function PlanScreen() {
         <div className="space-y-4">
           <button
             onClick={() => setShowPast((v) => !v)}
-            className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-ink/40 py-2.5 text-sm font-semibold text-muted active:bg-surface"
+            className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-line/40 py-2.5 text-sm font-semibold text-muted active:bg-surface"
           >
             {showPast ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             {showPast ? 'Ocultar' : 'Ver'} {pastWeeks.length}{' '}
@@ -320,7 +320,7 @@ export function PlanScreen() {
       <button
         onClick={() => openNew()}
         aria-label="Agregar movimiento"
-        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full border-2 border-ink bg-accent shadow-hard-lg transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm"
+        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full border-2 border-line bg-accent text-ink shadow-hard-lg transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm"
       >
         <Plus size={26} />
       </button>
@@ -352,7 +352,7 @@ export function PlanScreen() {
 function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: number }) {
   const alertWeek = computed.weeks.find((w) => w.lowestBalance < threshold)
   return (
-    <div className="rounded-chunky border-2 border-ink bg-ink p-5 text-paper shadow-hard">
+    <div className="rounded-chunky border-2 border-line bg-ink p-5 text-paper shadow-hard">
       <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
         Saldo líquido final
       </p>
@@ -389,7 +389,7 @@ function CardStrip({
     return (
       <button
         onClick={onAdd}
-        className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-ink/40 py-3 text-sm font-semibold text-muted active:bg-surface"
+        className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-line/40 py-3 text-sm font-semibold text-muted active:bg-surface"
       >
         <CardIcon size={16} /> Agregar tarjeta de crédito
       </button>
@@ -403,14 +403,14 @@ function CardStrip({
           <button
             key={card.id}
             onClick={() => onEdit(card)}
-            className="w-44 shrink-0 rounded-chunky border-2 border-ink bg-surface p-3 text-left shadow-hard-sm"
+            className="w-44 shrink-0 rounded-chunky border-2 border-line bg-surface p-3 text-left shadow-hard-sm"
           >
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: card.color }} />
               <span className="truncate text-sm font-bold">{card.name}</span>
               {blocked && <Lock size={12} className="shrink-0 text-muted" />}
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full border border-ink bg-paper">
+            <div className="mt-2 h-2 overflow-hidden rounded-full border border-line bg-canvas">
               <div
                 className="h-full"
                 style={{ width: `${pct}%`, background: blocked ? '#8a857a' : card.color }}
@@ -436,7 +436,7 @@ function CardStrip({
       <button
         onClick={onAdd}
         aria-label="Agregar tarjeta"
-        className="grid w-12 shrink-0 place-items-center rounded-chunky border-2 border-dashed border-ink/40 active:bg-surface"
+        className="grid w-12 shrink-0 place-items-center rounded-chunky border-2 border-dashed border-line/40 active:bg-surface"
       >
         <Plus size={18} />
       </button>
@@ -494,7 +494,7 @@ function MovementRow({
       className={cn(
         'flex items-center gap-3 px-4 py-2.5',
         isAnchor && 'bg-accent/10',
-        isBlock && 'bg-ink/5',
+        isBlock && 'bg-fg/5',
         !mv.included && 'opacity-40',
       )}
     >
@@ -502,7 +502,7 @@ function MovementRow({
       <button onClick={onToggle} aria-label={mv.included ? 'Excluir' : 'Incluir'} className="shrink-0">
         <span
           className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-lg border-2 border-ink',
+            'flex h-8 w-8 items-center justify-center rounded-lg border-2 border-line',
             mv.included ? `${meta.bg} shadow-hard-sm` : 'bg-surface',
           )}
         >

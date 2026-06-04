@@ -195,7 +195,7 @@ export function MovementSheet({
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col overflow-y-auto rounded-t-[22px] border-2 border-ink bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col overflow-y-auto rounded-t-[22px] border-2 border-line bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
           <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-ink/20" />
           <div className="space-y-3.5 p-5">
             <Drawer.Title className="font-display text-xl font-bold">
@@ -204,7 +204,7 @@ export function MovementSheet({
             <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
 
             {isRecurring && (
-              <div className="flex items-center gap-2 rounded-chunky border-2 border-ink bg-ink/5 px-3 py-2 text-sm font-semibold">
+              <div className="flex items-center gap-2 rounded-chunky border-2 border-line bg-fg/5 px-3 py-2 text-sm font-semibold">
                 <Repeat size={15} /> Parte de una serie recurrente
               </div>
             )}
@@ -215,8 +215,8 @@ export function MovementSheet({
                   key={mo}
                   onClick={() => changeMode(mo)}
                   className={cn(
-                    'rounded-chunky border-2 border-ink py-2 text-sm font-bold transition-transform active:translate-y-0.5',
-                    mode === mo ? ACTIVE_CLS[mo] + ' shadow-hard-sm' : 'bg-surface text-ink',
+                    'rounded-chunky border-2 border-line py-2 text-sm font-bold transition-transform active:translate-y-0.5',
+                    mode === mo ? ACTIVE_CLS[mo] + ' shadow-hard-sm' : 'bg-surface text-fg',
                   )}
                 >
                   {LABELS[mo]}
@@ -236,7 +236,7 @@ export function MovementSheet({
                   <button
                     onClick={() => setBlockOn(true)}
                     className={cn(
-                      'rounded-chunky border-2 border-ink py-2 text-sm font-bold active:translate-y-0.5',
+                      'rounded-chunky border-2 border-line py-2 text-sm font-bold active:translate-y-0.5',
                       blockOn ? 'bg-ink text-paper shadow-hard-sm' : 'bg-surface',
                     )}
                   >
@@ -245,7 +245,7 @@ export function MovementSheet({
                   <button
                     onClick={() => setBlockOn(false)}
                     className={cn(
-                      'rounded-chunky border-2 border-ink py-2 text-sm font-bold active:translate-y-0.5',
+                      'rounded-chunky border-2 border-line py-2 text-sm font-bold active:translate-y-0.5',
                       !blockOn ? 'bg-pos text-white shadow-hard-sm' : 'bg-surface',
                     )}
                   >
@@ -353,12 +353,12 @@ export function MovementSheet({
                 {mode === 'gasto' && cards.length > 0 && (
                   <button
                     onClick={() => setCreditEligible((v) => !v)}
-                    className="flex w-full items-center justify-between rounded-chunky border-2 border-ink bg-surface px-3 py-2.5 text-left"
+                    className="flex w-full items-center justify-between rounded-chunky border-2 border-line bg-surface px-3 py-2.5 text-left"
                   >
                     <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
                     <span
                       className={cn(
-                        'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
+                        'flex h-6 w-11 items-center rounded-full border-2 border-line p-0.5 transition-colors',
                         creditEligible ? 'bg-accent' : 'bg-surface',
                       )}
                     >
@@ -379,7 +379,7 @@ export function MovementSheet({
                         key={c.id}
                         onClick={() => setCategoryId(categoryId === c.id ? undefined : c.id)}
                         className={cn(
-                          'flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-sm font-semibold',
+                          'flex items-center gap-1.5 rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
                           categoryId === c.id ? 'bg-ink text-paper' : 'bg-surface',
                         )}
                       >
@@ -416,7 +416,7 @@ export function MovementSheet({
                     if (movement) onDelete?.(movement.id)
                     onOpenChange(false)
                   }}
-                  className="w-full rounded-chunky border-2 border-ink bg-surface py-3 text-sm font-bold text-neg active:translate-y-0.5"
+                  className="w-full rounded-chunky border-2 border-line bg-surface py-3 text-sm font-bold text-neg active:translate-y-0.5"
                 >
                   Solo este registro
                 </button>
@@ -425,7 +425,7 @@ export function MovementSheet({
                     if (movement) onDeleteFollowing?.(movement)
                     onOpenChange(false)
                   }}
-                  className="w-full rounded-chunky border-2 border-ink bg-neg py-3 text-sm font-bold text-white shadow-hard-sm active:translate-y-0.5"
+                  className="w-full rounded-chunky border-2 border-line bg-neg py-3 text-sm font-bold text-white shadow-hard-sm active:translate-y-0.5"
                 >
                   Este y todos los siguientes
                 </button>
@@ -448,7 +448,7 @@ export function MovementSheet({
                       }
                     }}
                     aria-label="Eliminar"
-                    className="flex items-center justify-center rounded-chunky border-2 border-ink bg-surface px-4 py-3 text-neg active:translate-y-0.5"
+                    className="flex items-center justify-center rounded-chunky border-2 border-line bg-surface px-4 py-3 text-neg active:translate-y-0.5"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -456,7 +456,7 @@ export function MovementSheet({
                 <button
                   onClick={submit}
                   disabled={!canSave}
-                  className="flex-1 rounded-chunky border-2 border-ink bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
+                  className="flex-1 rounded-chunky border-2 border-line bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
                 >
                   {movement ? 'Guardar' : 'Agregar'}
                 </button>
@@ -515,7 +515,7 @@ function WeekDay({
                 type="button"
                 onClick={() => setDate(active ? '' : d)}
                 className={cn(
-                  'flex flex-col items-center rounded-lg border-2 border-ink py-1 transition-transform active:translate-y-0.5',
+                  'flex flex-col items-center rounded-lg border-2 border-line py-1 transition-transform active:translate-y-0.5',
                   active ? 'bg-ink text-paper' : 'bg-surface',
                 )}
               >
@@ -550,7 +550,7 @@ function Chips({
             key={o.id}
             onClick={() => onChange(o.id)}
             className={cn(
-              'flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1 text-sm font-semibold',
+              'flex items-center gap-1.5 rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
               value === o.id ? 'bg-ink text-paper' : 'bg-surface',
             )}
           >
@@ -565,7 +565,7 @@ function Chips({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block rounded-chunky border-2 border-ink bg-surface px-3 py-2 focus-within:shadow-hard-sm">
+    <label className="block rounded-chunky border-2 border-line bg-surface px-3 py-2 focus-within:shadow-hard-sm">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
       <div className="mt-0.5">{children}</div>
     </label>

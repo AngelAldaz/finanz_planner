@@ -2,14 +2,20 @@
 
 /* ----- Sistema de diseño "Bold fintech" (tokens) ----- */
 @theme {
-  --color-ink: #141414;
-  --color-paper: #f4f1e8;
-  --color-surface: #ffffff;
-  --color-accent: #ccff00; /* lima eléctrico: marca / activos / CTAs */
+  /* fijos (marca): el acento siempre lima, el texto sobre bloques oscuros/acento siempre así */
+  --color-ink: #141414; /* bloques oscuros, texto sobre acento, sombras */
+  --color-paper: #f4f1e8; /* texto sobre bloques oscuros */
+  --color-accent: #ccff00; /* lima eléctrico */
   --color-pos: #0e9f6e; /* ingreso */
   --color-neg: #ff3b30; /* gasto */
-  --color-cobalt: #2e5bff; /* líneas de gráfica */
-  --color-muted: #8a857a;
+  --color-cobalt: #2e5bff; /* pago / gráficas */
+
+  /* semánticos (voltean en dark) */
+  --color-canvas: #f4f1e8; /* fondo de página */
+  --color-surface: #ffffff; /* tarjetas / inputs */
+  --color-fg: #141414; /* texto primario */
+  --color-line: #141414; /* bordes */
+  --color-muted: #8a857a; /* texto secundario */
 
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
@@ -22,14 +28,24 @@
   --shadow-hard-lg: 6px 6px 0 #141414;
 }
 
+/* ----- Dark mode: voltea solo la capa de superficie; la marca (ink/paper/accent) se queda ----- */
+.dark {
+  --color-canvas: #211f17;
+  --color-surface: #2b2820;
+  --color-fg: #f3efe4;
+  --color-line: #5f5a4d;
+  --color-muted: #9a9486;
+  color-scheme: dark;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
   }
   body {
     margin: 0;
-    background: var(--color-paper);
-    color: var(--color-ink);
+    background: var(--color-canvas);
+    color: var(--color-fg);
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     overscroll-behavior-y: none;

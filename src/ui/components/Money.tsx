@@ -14,6 +14,6 @@ interface MoneyProps {
 /** Importe en mono tabular (look de libro contable). */
 export function Money({ cents, signed, full, className }: MoneyProps) {
   const text = signed ? formatSigned(cents) : full ? formatMXN(cents) : formatMXNCompact(cents)
-  const tone = signed ? (cents > 0 ? 'text-pos' : cents < 0 ? 'text-neg' : 'text-ink') : ''
+  const tone = signed ? (cents > 0 ? 'text-pos' : cents < 0 ? 'text-neg' : 'text-fg') : ''
   return <span className={cn('font-mono tnum', tone, className)}>{text}</span>
 }
