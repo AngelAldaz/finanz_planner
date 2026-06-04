@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandRecurrence } from '../../src/domain/recurrence'
+import { expandRecurrence, recurrenceFromPreset } from '../../src/domain/recurrence'
 import type { Horizon, RecurrenceRule, ScenarioRecurrence } from '../../src/domain/types'
 
 const horizon: Horizon = { start: '2026-06-01', end: '2026-07-31' }
@@ -68,5 +68,23 @@ describe('recurrencias', () => {
       '2026-06-05',
       '2026-07-03',
     ])
+  })
+})
+
+describe('recurrenceFromPreset', () => {
+  it('semanal usa el weekday de la fecha de inicio', () => {
+    // 2026-06-05 es viernes (weekday 4)
+    expect(recurrenceFromPreset('weekly', '2026-06-05')?.weekdays).toEqual([4])
+  })
+  it('quincena = 15 y fin de mes con ajuste a día hábil', () => {
+    const rule = recurrenceFromPreset('quincena', '2026-06-01')
+    expect(rule?.daysOfMonth).toEqual([15, 'last'])
+    expect(rule?.businessDayAdjust).toBe('previous')
+  })
+  it('cada 15 días = intervalo de 15 días', () => {
+    expect(recurrenceFromPreset('every15', '2026-06-01')?.every).toEqual({ n: 15, unit: 'day' })
+  })
+  it('once no genera regla', () => {
+    expect(recurrenceFromPreset('once', '2026-06-01')).toBeUndefined()
   })
 })

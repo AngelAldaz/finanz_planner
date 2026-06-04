@@ -1,5 +1,5 @@
 // Expansión de reglas de recurrencia → movimientos con fecha calculada.
-import type { Horizon, Movement, RecurrenceRule, ScenarioRecurrence, Weekday } from './types'
+import type { Horizon, ISODate, Movement, RecurrenceRule, ScenarioRecurrence, Weekday } from './types'
 import {
   addDays,
   addMonths,
@@ -118,4 +118,47 @@ export function expandRecurrence(rec: ScenarioRecurrence, horizon: Horizon): Mov
 
 export function expandAllRecurrences(recs: ScenarioRecurrence[], horizon: Horizon): Movement[] {
   return recs.flatMap((r) => expandRecurrence(r, horizon))
+}
+
+export type RecurrencePreset =
+  | 'once'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'quincena'
+  | 'every15'
+  | 'bimonthly'
+
+export const PRESET_LABELS: Record<RecurrencePreset, string> = {
+  once: 'No se repite',
+  weekly: 'Cada semana',
+  biweekly: 'Cada 2 semanas',
+  monthly: 'Cada mes',
+  quincena: 'Quincena (15 y fin de mes)',
+  every15: 'Cada 15 días',
+  bimonthly: 'Cada 2 meses',
+}
+
+/** Construye una regla a partir de un preset y la fecha de inicio elegida. */
+export function recurrenceFromPreset(
+  preset: RecurrencePreset,
+  startDate: ISODate,
+): RecurrenceRule | undefined {
+  if (preset === 'once') return undefined
+  const weekday = weekdayMon(startDate)
+  const dom = parseISO(startDate).d
+  switch (preset) {
+    case 'weekly':
+      return { startDate, weekdays: [weekday] }
+    case 'biweekly':
+      return { startDate, every: { n: 2, unit: 'week' } }
+    case 'monthly':
+      return { startDate, daysOfMonth: [dom], businessDayAdjust: 'previous' }
+    case 'quincena':
+      return { startDate, daysOfMonth: [15, 'last'], businessDayAdjust: 'previous' }
+    case 'every15':
+      return { startDate, every: { n: 15, unit: 'day' } }
+    case 'bimonthly':
+      return { startDate, every: { n: 2, unit: 'month' } }
+  }
 }
