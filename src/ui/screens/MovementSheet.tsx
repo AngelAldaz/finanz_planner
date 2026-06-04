@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Drawer } from 'vaul'
 import { Trash2 } from 'lucide-react'
-import type { Category, Cents, CreditCard, ID, ISODate, Movement, MovementKind } from '../../domain/types'
+import type {
+  Category,
+  Cents,
+  CreditCard,
+  ID,
+  ISODate,
+  Movement,
+  MovementKind,
+  RecurrenceRule,
+} from '../../domain/types'
 import { LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
+import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
 import { fromCents, toCents } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
@@ -20,6 +30,7 @@ export interface MovementSubmit {
   payCardId?: ID
   accountId?: ID
   cardBlock?: { cardId: ID; blocked: boolean }
+  recurrence?: RecurrenceRule
 }
 
 interface Props {
@@ -82,6 +93,7 @@ export function MovementSheet({
   const [payCardId, setPayCardId] = useState<ID | undefined>(undefined)
   const [account, setAccount] = useState<ID>(LIQUID)
   const [blockOn, setBlockOn] = useState(true)
+  const [repeat, setRepeat] = useState<RecurrencePreset>('once')
 
   useEffect(() => {
     if (!open) return
@@ -96,6 +108,7 @@ export function MovementSheet({
     setPayCardId(m?.payCardId ?? m?.cardBlock?.cardId ?? cards[0]?.id)
     setAccount(m?.accountId ?? LIQUID)
     setBlockOn(m?.cardBlock?.blocked ?? true)
+    setRepeat('once')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -167,6 +180,7 @@ export function MovementSheet({
         date: date || undefined,
         categoryId,
         creditEligible: mode === 'gasto' ? creditEligible : undefined,
+        recurrence: movement ? undefined : recurrenceFromPreset(repeat, date || week),
       })
     }
     onOpenChange(false)
@@ -363,6 +377,22 @@ export function MovementSheet({
                       </button>
                     ))}
                   </div>
+                )}
+
+                {!movement && (mode === 'gasto' || mode === 'ingreso') && (
+                  <Field label="Repetir">
+                    <select
+                      value={repeat}
+                      onChange={(e) => setRepeat(e.target.value as RecurrencePreset)}
+                      className="w-full bg-transparent text-base outline-none"
+                    >
+                      {(Object.keys(PRESET_LABELS) as RecurrencePreset[]).map((p) => (
+                        <option key={p} value={p}>
+                          {PRESET_LABELS[p]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 )}
               </>
             )}

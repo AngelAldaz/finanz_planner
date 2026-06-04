@@ -7,6 +7,7 @@ import type {
   ISODate,
   Movement,
   Plan,
+  RecurrenceRule,
   Scenario,
   ScenarioRecurrence,
 } from '../domain/types'
@@ -15,6 +16,7 @@ import { repository, newId, nowISO } from '../data'
 import { buildSeedBundle } from '../data/seed/seedData'
 import { mondayOf } from '../domain/dates'
 import { effectiveDate } from '../domain/ledger'
+import { expandRecurrence } from '../domain/recurrence'
 
 const DEFAULT_HORIZON: Horizon = { start: '2026-05-25', end: '2026-07-05' }
 const CARD_COLORS = ['#2e5bff', '#ff3b30', '#0e9f6e', '#9b51e0', '#e8923c', '#00a3a3']
@@ -47,6 +49,12 @@ interface PlanState {
   selectScenario: (id: ID) => Promise<void>
   refresh: () => Promise<void>
   addMovement: (input: AddMovementInput) => Promise<void>
+  addRecurring: (input: {
+    name: string
+    amount: number
+    categoryId?: ID
+    rule: RecurrenceRule
+  }) => Promise<void>
   updateMovement: (m: Movement) => Promise<void>
   deleteMovement: (id: ID) => Promise<void>
   toggleIncluded: (id: ID) => Promise<void>
@@ -130,6 +138,25 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       source: { kind: 'manual' },
       order,
     })
+    await get().refresh()
+  },
+
+  addRecurring: async ({ name, amount, categoryId, rule }) => {
+    const { activeScenarioId, movements, horizon } = get()
+    if (!activeScenarioId) return
+    const baseOrder = movements.length ? Math.max(...movements.map((m) => m.order)) + 1 : 0
+    const rec: ScenarioRecurrence = {
+      id: newId(),
+      scenarioId: activeScenarioId,
+      name,
+      amount,
+      categoryId,
+      rule,
+      included: true,
+    }
+    // materializa cada ocurrencia como un movimiento real y editable
+    const generated = expandRecurrence(rec, horizon).map((m, i) => ({ ...m, order: baseOrder + i }))
+    if (generated.length) await repository.bulkPutMovements(generated)
     await get().refresh()
   },
 

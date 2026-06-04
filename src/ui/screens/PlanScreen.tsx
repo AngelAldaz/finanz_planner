@@ -9,6 +9,7 @@ import {
   CreditCard as CardIcon,
   Lock,
   Plus,
+  Repeat,
   Unlock,
   X,
 } from 'lucide-react'
@@ -34,6 +35,7 @@ export function PlanScreen() {
   const duplicate = usePlanStore((s) => s.duplicateActiveScenario)
   const deleteScenario = usePlanStore((s) => s.deleteScenario)
   const addMovement = usePlanStore((s) => s.addMovement)
+  const addRecurring = usePlanStore((s) => s.addRecurring)
   const updateMovement = usePlanStore((s) => s.updateMovement)
   const deleteMovement = usePlanStore((s) => s.deleteMovement)
   const toggleIncluded = usePlanStore((s) => s.toggleIncluded)
@@ -112,6 +114,15 @@ export function PlanScreen() {
   }
 
   async function handleSubmit(data: MovementSubmit) {
+    if (data.recurrence && !editing) {
+      await addRecurring({
+        name: data.name,
+        amount: data.amount,
+        categoryId: data.categoryId,
+        rule: data.recurrence,
+      })
+      return
+    }
     const ws = data.weekStart
     if (data.kind === 'anchor') {
       const account = data.accountId ?? LIQUID
@@ -510,6 +521,9 @@ function MovementRow({
               <span className="font-mono text-[11px] tabular-nums text-muted">
                 {dayLabel(mv.date)}
               </span>
+            )}
+            {mv.source?.kind === 'recurrence' && (
+              <Repeat size={11} className="text-muted" aria-label="recurrente" />
             )}
             {isCardAnchor && (
               <Tag color="bg-accent text-ink">saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
