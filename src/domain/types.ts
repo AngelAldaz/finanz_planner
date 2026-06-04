@@ -58,6 +58,7 @@ export interface Plan {
   currency: 'MXN'
   horizonStart: ISODate
   horizonEnd: ISODate
+  lowBalanceThreshold?: Cents // avísame si el saldo baja de esto
   createdAt: string
   updatedAt: string
 }

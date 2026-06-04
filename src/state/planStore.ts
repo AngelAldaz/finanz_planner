@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   Category,
+  Cents,
   CreditCard,
   Horizon,
   ID,
@@ -44,8 +45,10 @@ interface PlanState {
   movements: Movement[]
   recurrences: ScenarioRecurrence[]
   horizon: Horizon
+  lowBalanceThreshold: Cents
 
   init: () => Promise<void>
+  setLowBalanceThreshold: (cents: number) => Promise<void>
   selectScenario: (id: ID) => Promise<void>
   refresh: () => Promise<void>
   addMovement: (input: AddMovementInput) => Promise<void>
@@ -77,6 +80,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   movements: [],
   recurrences: [],
   horizon: DEFAULT_HORIZON,
+  lowBalanceThreshold: 0,
 
   init: async () => {
     if (await repository.isEmpty()) {
@@ -98,8 +102,20 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       creditCards,
       activePlanId: plan?.id,
       horizon: plan ? { start: plan.horizonStart, end: plan.horizonEnd } : DEFAULT_HORIZON,
+      lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
     })
     if (scenario) await get().selectScenario(scenario.id)
+  },
+
+  setLowBalanceThreshold: async (cents) => {
+    const { plans, activePlanId } = get()
+    set({ lowBalanceThreshold: cents })
+    const plan = plans.find((p) => p.id === activePlanId)
+    if (plan) {
+      const updated = { ...plan, lowBalanceThreshold: cents, updatedAt: nowISO() }
+      await repository.updatePlan(updated)
+      set({ plans: plans.map((p) => (p.id === plan.id ? updated : p)) })
+    }
   },
 
   selectScenario: async (id) => {
