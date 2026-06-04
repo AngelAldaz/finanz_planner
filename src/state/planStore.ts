@@ -15,12 +15,30 @@ import type {
 import { LIQUID } from '../domain/types'
 import { repository, newId, nowISO } from '../data'
 import { buildSeedBundle } from '../data/seed/seedData'
-import { mondayOf } from '../domain/dates'
+import { addDays, mondayOf } from '../domain/dates'
 import { effectiveDate } from '../domain/ledger'
 import { expandRecurrence } from '../domain/recurrence'
 
 const DEFAULT_HORIZON: Horizon = { start: '2026-05-25', end: '2026-07-05' }
 const CARD_COLORS = ['#2e5bff', '#ff3b30', '#0e9f6e', '#9b51e0', '#e8923c', '#00a3a3']
+
+// El plan es ABIERTO: el fin se calcula solo y se extiende según tu contenido (semana tras semana).
+const BUFFER_WEEKS = 26 // colchón de semanas futuras siempre disponibles
+const maxISO = (a: ISODate, b: ISODate): ISODate => (a > b ? a : b)
+
+function todayMondayISO(): ISODate {
+  const d = new Date()
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return mondayOf(iso)
+}
+
+function dynamicHorizon(plan: Plan | undefined, movements: Movement[]): Horizon {
+  const todayMon = todayMondayISO()
+  const dates = movements.map((m) => m.date ?? m.weekStart).filter((x): x is string => !!x)
+  const latest = dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : todayMon
+  const end = addDays(maxISO(mondayOf(latest), todayMon), 7 * BUFFER_WEEKS)
+  return { start: plan ? mondayOf(plan.horizonStart) : todayMon, end }
+}
 
 export interface AddMovementInput {
   name: string
@@ -105,7 +123,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       categories,
       creditCards,
       activePlanId: plan?.id,
-      horizon: plan ? { start: plan.horizonStart, end: plan.horizonEnd } : DEFAULT_HORIZON,
+      horizon: dynamicHorizon(plan, []),
       lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
     })
     if (scenario) await get().selectScenario(scenario.id)
@@ -145,7 +163,8 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       repository.listMovements(id),
       repository.listRecurrences(id),
     ])
-    set({ activeScenarioId: id, movements, recurrences })
+    const plan = get().plans.find((p) => p.id === get().activePlanId)
+    set({ activeScenarioId: id, movements, recurrences, horizon: dynamicHorizon(plan, movements) })
   },
 
   refresh: async () => {
@@ -155,7 +174,8 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       repository.listMovements(id),
       repository.listRecurrences(id),
     ])
-    set({ movements, recurrences })
+    const plan = get().plans.find((p) => p.id === get().activePlanId)
+    set({ movements, recurrences, horizon: dynamicHorizon(plan, movements) })
   },
 
   addMovement: async (input) => {
@@ -194,8 +214,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       rule,
       included: true,
     }
-    // materializa cada ocurrencia como un movimiento real y editable
-    const generated = expandRecurrence(rec, horizon).map((m, i) => ({ ...m, order: baseOrder + i }))
+    // materializa ~1 año hacia adelante (timeline abierto); cada ocurrencia es un movimiento editable
+    const recurHorizon: Horizon = {
+      start: horizon.start,
+      end: maxISO(horizon.end, addDays(todayMondayISO(), 7 * 52)),
+    }
+    const generated = expandRecurrence(rec, recurHorizon).map((m, i) => ({ ...m, order: baseOrder + i }))
     if (generated.length) await repository.bulkPutMovements(generated)
     await get().refresh()
   },

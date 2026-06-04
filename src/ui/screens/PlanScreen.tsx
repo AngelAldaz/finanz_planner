@@ -18,7 +18,7 @@ import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
 import { CardSheet } from './CardSheet'
-import { dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
+import { addDays, dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { sortMovements } from '../../domain/ledger'
 import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
@@ -94,6 +94,10 @@ export function PlanScreen() {
     const future = allWeeks.filter((w) => w >= currentWeek)
     return future.length ? future : allWeeks
   }, [allWeeks, currentWeek])
+  const nextNewWeek = useMemo(() => {
+    const last = shownWeeks.length ? shownWeeks[shownWeeks.length - 1] : currentWeek
+    return addDays(last > currentWeek ? last : currentWeek, 7)
+  }, [shownWeeks, currentWeek])
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Movement | null>(null)
@@ -316,6 +320,13 @@ export function PlanScreen() {
       )}
 
       <div className="space-y-4">{visibleWeeks.map((ws) => renderWeek(ws, false))}</div>
+
+      <button
+        onClick={() => openNew(nextNewWeek)}
+        className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-line/40 py-3 text-sm font-semibold text-muted active:bg-surface"
+      >
+        <Plus size={16} /> Planear una semana más ({weekRangeLabel(nextNewWeek)})
+      </button>
 
       <button
         onClick={() => openNew()}

@@ -19,7 +19,6 @@ export function AjustesScreen() {
   const activePlanId = usePlanStore((s) => s.activePlanId)
   const plan = plans.find((p) => p.id === activePlanId)
   const setPlanName = usePlanStore((s) => s.setPlanName)
-  const setHorizon = usePlanStore((s) => s.setHorizon)
   const threshold = usePlanStore((s) => s.lowBalanceThreshold)
   const setThreshold = usePlanStore((s) => s.setLowBalanceThreshold)
   const init = usePlanStore((s) => s.init)
@@ -80,26 +79,8 @@ export function AjustesScreen() {
               className="w-full bg-transparent text-base outline-none"
             />
           </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Desde">
-              <input
-                type="date"
-                defaultValue={plan.horizonStart}
-                onChange={(e) => e.target.value && setHorizon(e.target.value, plan.horizonEnd)}
-                className="w-full bg-transparent text-base outline-none"
-              />
-            </Field>
-            <Field label="Hasta">
-              <input
-                type="date"
-                defaultValue={plan.horizonEnd}
-                onChange={(e) => e.target.value && setHorizon(plan.horizonStart, e.target.value)}
-                className="w-full bg-transparent text-base outline-none"
-              />
-            </Field>
-          </div>
           <p className="px-1 text-xs text-muted">
-            Extiende «Hasta» para planear más semanas hacia adelante.
+            Tu plan es continuo: agregas semana tras semana, sin un fin fijo.
           </p>
         </Card>
       )}
