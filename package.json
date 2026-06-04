@@ -16,6 +16,7 @@
     "@fontsource/hanken-grotesk": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@fontsource/space-mono": "^5.2.9",
+    "@supabase/supabase-js": "^2.107.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.3",
