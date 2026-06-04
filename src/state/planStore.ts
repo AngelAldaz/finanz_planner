@@ -49,6 +49,8 @@ interface PlanState {
 
   init: () => Promise<void>
   setLowBalanceThreshold: (cents: number) => Promise<void>
+  setPlanName: (name: string) => Promise<void>
+  setHorizon: (start: ISODate, end: ISODate) => Promise<void>
   selectScenario: (id: ID) => Promise<void>
   refresh: () => Promise<void>
   addMovement: (input: AddMovementInput) => Promise<void>
@@ -66,6 +68,8 @@ interface PlanState {
   setRealBalance: (weekStart: ISODate, amount: number, name?: string, accountId?: ID) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
   deleteScenario: (id: ID) => Promise<void>
+  renameScenario: (id: ID, name: string) => Promise<void>
+  duplicateScenarioById: (id: ID, name: string) => Promise<void>
   addCard: (name: string, limit: number) => Promise<void>
   updateCard: (card: CreditCard) => Promise<void>
   deleteCard: (id: ID) => Promise<void>
@@ -116,6 +120,24 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       await repository.updatePlan(updated)
       set({ plans: plans.map((p) => (p.id === plan.id ? updated : p)) })
     }
+  },
+
+  setPlanName: async (name) => {
+    const { plans, activePlanId } = get()
+    const plan = plans.find((p) => p.id === activePlanId)
+    if (!plan) return
+    const updated = { ...plan, name, updatedAt: nowISO() }
+    await repository.updatePlan(updated)
+    set({ plans: plans.map((p) => (p.id === plan.id ? updated : p)) })
+  },
+
+  setHorizon: async (start, end) => {
+    const { plans, activePlanId } = get()
+    const plan = plans.find((p) => p.id === activePlanId)
+    if (!plan) return
+    const updated = { ...plan, horizonStart: start, horizonEnd: end, updatedAt: nowISO() }
+    await repository.updatePlan(updated)
+    set({ plans: plans.map((p) => (p.id === plan.id ? updated : p)), horizon: { start, end } })
   },
 
   selectScenario: async (id) => {
@@ -262,6 +284,21 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const remaining = await repository.listScenarios(activePlanId)
     set({ scenarios: remaining })
     if (activeScenarioId === id && remaining[0]) await get().selectScenario(remaining[0].id)
+  },
+
+  renameScenario: async (id, name) => {
+    const s = get().scenarios.find((x) => x.id === id)
+    if (!s) return
+    const updated = { ...s, name, updatedAt: nowISO() }
+    await repository.updateScenario(updated)
+    set({ scenarios: get().scenarios.map((x) => (x.id === id ? updated : x)) })
+  },
+
+  duplicateScenarioById: async (id, name) => {
+    const { activePlanId } = get()
+    if (!activePlanId) return
+    await repository.duplicateScenario(id, name)
+    set({ scenarios: await repository.listScenarios(activePlanId) })
   },
 
   addCard: async (name, limit) => {

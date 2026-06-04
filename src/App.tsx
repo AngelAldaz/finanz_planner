@@ -1,6 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePlanStore } from './state/planStore'
+import { useUiStore } from './state/uiStore'
 import { PlanScreen } from './ui/screens/PlanScreen'
+import { EscenariosScreen } from './ui/screens/EscenariosScreen'
+import { AjustesScreen } from './ui/screens/AjustesScreen'
+import { LockScreen } from './ui/screens/LockScreen'
 
 // Recharts es pesado → carga diferida (solo al abrir Gráficas)
 const ChartsScreen = lazy(() =>
@@ -21,14 +25,18 @@ export default function App() {
   const init = usePlanStore((s) => s.init)
   const ready = usePlanStore((s) => s.ready)
   const [tab, setTab] = useState<Tab>('plan')
+  const locked = useUiStore((s) => s.locked)
+  const setLocked = useUiStore((s) => s.setLocked)
 
   useEffect(() => {
     void init()
   }, [init])
 
+  if (locked) return <LockScreen onUnlock={() => setLocked(false)} />
+
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col bg-paper">
-      <header className="sticky top-0 z-20 border-b-2 border-ink bg-paper px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col bg-canvas">
+      <header className="sticky top-0 z-20 border-b-2 border-line bg-canvas px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <h1 className="font-display text-2xl font-bold tracking-tight">finanz.</h1>
         <p className="text-sm text-muted">Tu dinero, semana a semana.</p>
       </header>
@@ -42,12 +50,16 @@ export default function App() {
           <Suspense fallback={<Loading />}>
             <ChartsScreen />
           </Suspense>
+        ) : tab === 'escenarios' ? (
+          <EscenariosScreen />
+        ) : tab === 'ajustes' ? (
+          <AjustesScreen />
         ) : (
           <Placeholder tab={tab} />
         )}
       </main>
 
-      <nav className="sticky bottom-0 z-20 grid grid-cols-5 border-t-2 border-ink bg-surface pb-[env(safe-area-inset-bottom)]">
+      <nav className="sticky bottom-0 z-20 grid grid-cols-5 border-t-2 border-line bg-surface pb-[env(safe-area-inset-bottom)]">
         {TABS.map((t) => {
           const active = t.id === tab
           return (
@@ -56,13 +68,13 @@ export default function App() {
               onClick={() => setTab(t.id)}
               className={
                 'flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold transition-colors ' +
-                (active ? 'text-ink' : 'text-muted')
+                (active ? 'text-fg' : 'text-muted')
               }
             >
               <span
                 className={
                   'flex h-9 w-9 items-center justify-center rounded-chunky border-2 text-lg ' +
-                  (active ? 'border-ink bg-accent shadow-hard-sm' : 'border-transparent')
+                  (active ? 'border-line bg-accent text-ink shadow-hard-sm' : 'border-transparent')
                 }
               >
                 {t.glyph}
@@ -79,15 +91,15 @@ export default function App() {
 function Loading() {
   return (
     <div className="grid h-64 place-items-center text-sm text-muted">
-      <span className="animate-pulse font-display text-lg font-bold text-ink">finanz…</span>
+      <span className="animate-pulse font-display text-lg font-bold text-fg">finanz…</span>
     </div>
   )
 }
 
 function Placeholder({ tab }: { tab: Tab }) {
   return (
-    <div className="grid place-items-center gap-1 rounded-chunky border-2 border-dashed border-ink/40 p-10 text-center text-sm text-muted">
-      <span className="font-display text-lg font-bold text-ink">Próximamente</span>
+    <div className="grid place-items-center gap-1 rounded-chunky border-2 border-dashed border-line/40 p-10 text-center text-sm text-muted">
+      <span className="font-display text-lg font-bold text-fg">Próximamente</span>
       <span>Sección «{tab}»</span>
     </div>
   )
