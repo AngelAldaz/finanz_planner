@@ -23,6 +23,9 @@ export function AjustesScreen() {
   const threshold = usePlanStore((s) => s.lowBalanceThreshold)
   const setThreshold = usePlanStore((s) => s.setLowBalanceThreshold)
   const init = usePlanStore((s) => s.init)
+  const resetAll = usePlanStore((s) => s.resetAll)
+  const cloudEmail = useCloudStore((s) => s.email)
+  const cloudSync = useCloudStore((s) => s.syncNow)
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
 
@@ -50,6 +53,16 @@ export function AjustesScreen() {
     setPinSet(true)
     setEditingPin(false)
     setNewPin('')
+  }
+  async function resetEverything() {
+    if (
+      !window.confirm(
+        'Vas a BORRAR TODOS tus datos (local y nube) y empezar de cero. Esto NO se puede deshacer. ¿Continuar?',
+      )
+    )
+      return
+    await resetAll()
+    if (cloudEmail) await cloudSync()
   }
 
   return (
@@ -189,6 +202,19 @@ export function AjustesScreen() {
           </label>
         </div>
         <p className="mt-2 px-1 text-xs text-muted">Importar reemplaza todos tus datos locales.</p>
+      </Card>
+
+      <Card title="Zona de peligro">
+        <p className="text-sm text-muted">
+          Borra todos tus datos (local y nube si tienes sesión) y deja un plan vacío para empezar de
+          cero.
+        </p>
+        <button
+          onClick={() => void resetEverything()}
+          className="w-full rounded-chunky border-2 border-neg bg-surface py-2.5 text-sm font-bold text-neg active:translate-y-0.5"
+        >
+          Empezar de cero (borrar todo)
+        </button>
       </Card>
 
       <p className="px-1 text-center text-xs text-muted">finanz · tus datos viven solo en este dispositivo</p>

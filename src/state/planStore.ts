@@ -14,7 +14,7 @@ import type {
 } from '../domain/types'
 import { LIQUID } from '../domain/types'
 import { repository, newId, nowISO } from '../data'
-import { buildSeedBundle } from '../data/seed/seedData'
+import { buildEmptyBundle, buildSeedBundle } from '../data/seed/seedData'
 import { addDays, mondayOf } from '../domain/dates'
 import { effectiveDate } from '../domain/ledger'
 import { expandRecurrence } from '../domain/recurrence'
@@ -66,6 +66,7 @@ interface PlanState {
   lowBalanceThreshold: Cents
 
   init: () => Promise<void>
+  resetAll: () => Promise<void>
   setLowBalanceThreshold: (cents: number) => Promise<void>
   setPlanName: (name: string) => Promise<void>
   setHorizon: (start: ISODate, end: ISODate) => Promise<void>
@@ -130,6 +131,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
     })
     if (scenario) await get().selectScenario(scenario.id)
+  },
+
+  resetAll: async () => {
+    // borra todo lo local y deja un plan vacío
+    await repository.importAll(buildEmptyBundle(nowISO()))
+    await get().init()
   },
 
   setLowBalanceThreshold: async (cents) => {

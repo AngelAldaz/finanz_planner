@@ -157,3 +157,35 @@ export function buildSeedBundle(now: string): BackupBundle {
     creditCards: [],
   }
 }
+
+/** Plan vacío para "empezar de cero": un plan + un escenario, sin movimientos. */
+export function buildEmptyBundle(now: string): BackupBundle {
+  const today = now.slice(0, 10)
+  const plan: Plan = {
+    id: SEED_PLAN_ID,
+    name: 'Mi plan',
+    currency: 'MXN',
+    horizonStart: today,
+    horizonEnd: today,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const scenario: Scenario = {
+    id: SEED_SCENARIO_ID,
+    planId: SEED_PLAN_ID,
+    name: 'Principal',
+    position: 0,
+    createdAt: now,
+    updatedAt: now,
+  }
+  return {
+    version: 1,
+    plans: [plan],
+    scenarios: [scenario],
+    movements: [],
+    recurrences: [],
+    categories: SEED_CATEGORIES,
+    catalogItems: [],
+    creditCards: [],
+  }
+}
