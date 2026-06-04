@@ -13,8 +13,8 @@ import type {
 } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
-import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
 import { fromCents, toCents } from '../../domain/money'
+import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
 import { cn } from '../../lib/cn'
 
 export type SheetMode = 'gasto' | 'ingreso' | 'pago' | 'real' | 'bloqueo'
@@ -192,17 +192,37 @@ export function MovementSheet({
   }
 
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    <Drawer.Root open={open} onOpenChange={onOpenChange} repositionInputs={false}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col overflow-y-auto rounded-t-[22px] border-2 border-line bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
-          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-ink/20" />
-          <div className="space-y-3.5 p-5">
-            <Drawer.Title className="font-display text-xl font-bold">
-              {movement ? 'Editar movimiento' : 'Nuevo movimiento'}
-            </Drawer.Title>
-            <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col rounded-t-[22px] border-2 border-line bg-surface outline-none">
+          <div className="mx-auto mt-2.5 h-1.5 w-12 shrink-0 rounded-full bg-fg/15" />
 
+          {/* header con acciones SIEMPRE accesibles (aunque salga el teclado) */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b-2 border-line/10 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-1 text-sm font-semibold text-muted"
+            >
+              Cancelar
+            </button>
+            <Drawer.Title className="font-display text-base font-bold">
+              {movement ? 'Editar' : 'Nuevo'}
+            </Drawer.Title>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSave}
+              className="rounded-chunky border-2 border-ink bg-accent px-3.5 py-1.5 text-sm font-bold text-ink shadow-hard-sm transition-transform active:translate-y-0.5 disabled:opacity-40 disabled:shadow-none"
+            >
+              {movement ? 'Guardar' : 'Agregar'}
+            </button>
+          </div>
+          <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
+
+          {/* cuerpo con scroll propio */}
+          <div className="flex-1 space-y-3.5 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">
             {isRecurring && (
               <div className="flex items-center gap-2 rounded-chunky border-2 border-line bg-fg/5 px-3 py-2 text-sm font-semibold">
                 <Repeat size={15} /> Parte de una serie recurrente
@@ -275,7 +295,6 @@ export function MovementSheet({
                     placeholder={
                       isReal ? 'Saldo real' : isPago ? `Pago ${cardName(payCardId)}` : 'Gasolina, Don René…'
                     }
-                    autoFocus={!movement}
                     className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
                   />
                 </Field>
@@ -358,7 +377,7 @@ export function MovementSheet({
                     <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
                     <span
                       className={cn(
-                        'flex h-6 w-11 items-center rounded-full border-2 border-line p-0.5 transition-colors',
+                        'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
                         creditEligible ? 'bg-accent' : 'bg-surface',
                       )}
                     >
@@ -408,60 +427,51 @@ export function MovementSheet({
               </>
             )}
 
-            {deleteMode ? (
-              <div className="space-y-2 pt-1">
-                <p className="px-1 text-sm font-semibold">¿Qué quieres borrar de la serie?</p>
-                <button
-                  onClick={() => {
-                    if (movement) onDelete?.(movement.id)
-                    onOpenChange(false)
-                  }}
-                  className="w-full rounded-chunky border-2 border-line bg-surface py-3 text-sm font-bold text-neg active:translate-y-0.5"
-                >
-                  Solo este registro
-                </button>
-                <button
-                  onClick={() => {
-                    if (movement) onDeleteFollowing?.(movement)
-                    onOpenChange(false)
-                  }}
-                  className="w-full rounded-chunky border-2 border-line bg-neg py-3 text-sm font-bold text-white shadow-hard-sm active:translate-y-0.5"
-                >
-                  Este y todos los siguientes
-                </button>
-                <button
-                  onClick={() => setDeleteMode(false)}
-                  className="w-full py-2 text-sm font-semibold text-muted"
-                >
-                  Cancelar
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2 pt-1">
-                {movement && onDelete && (
+            {/* borrar (solo al editar) */}
+            {movement &&
+              onDelete &&
+              (deleteMode ? (
+                <div className="space-y-2 border-t-2 border-line/15 pt-3">
+                  <p className="px-1 text-sm font-semibold">¿Qué quieres borrar de la serie?</p>
                   <button
                     onClick={() => {
-                      if (isRecurring) setDeleteMode(true)
-                      else {
-                        onDelete(movement.id)
-                        onOpenChange(false)
-                      }
+                      onDelete(movement.id)
+                      onOpenChange(false)
                     }}
-                    aria-label="Eliminar"
-                    className="flex items-center justify-center rounded-chunky border-2 border-line bg-surface px-4 py-3 text-neg active:translate-y-0.5"
+                    className="w-full rounded-chunky border-2 border-line bg-surface py-3 text-sm font-bold text-neg active:translate-y-0.5"
                   >
-                    <Trash2 size={18} />
+                    Solo este registro
                   </button>
-                )}
+                  <button
+                    onClick={() => {
+                      onDeleteFollowing?.(movement)
+                      onOpenChange(false)
+                    }}
+                    className="w-full rounded-chunky border-2 border-ink bg-neg py-3 text-sm font-bold text-white shadow-hard-sm active:translate-y-0.5"
+                  >
+                    Este y todos los siguientes
+                  </button>
+                  <button
+                    onClick={() => setDeleteMode(false)}
+                    className="w-full py-2 text-sm font-semibold text-muted"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
                 <button
-                  onClick={submit}
-                  disabled={!canSave}
-                  className="flex-1 rounded-chunky border-2 border-line bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
+                  onClick={() => {
+                    if (isRecurring) setDeleteMode(true)
+                    else {
+                      onDelete(movement.id)
+                      onOpenChange(false)
+                    }
+                  }}
+                  className="flex w-full items-center justify-center gap-2 border-t-2 border-line/15 pt-3 text-sm font-bold text-neg"
                 >
-                  {movement ? 'Guardar' : 'Agregar'}
+                  <Trash2 size={16} /> Borrar movimiento
                 </button>
-              </div>
-            )}
+              ))}
           </div>
         </Drawer.Content>
       </Drawer.Portal>
