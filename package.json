@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "icons": "node scripts/gen-icons.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -40,6 +41,7 @@
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.1.1",
+    "pngjs": "^7.0.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
