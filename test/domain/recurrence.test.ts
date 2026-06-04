@@ -69,6 +69,16 @@ describe('recurrencias', () => {
       '2026-07-03',
     ])
   })
+
+  it('propaga creditEligible a cada ocurrencia', () => {
+    const r: ScenarioRecurrence = {
+      ...rec({ startDate: '2026-06-01', weekdays: [4] }),
+      creditEligible: true,
+    }
+    const occ = expandRecurrence(r, horizon)
+    expect(occ.length).toBeGreaterThan(0)
+    expect(occ.every((m) => m.creditEligible === true)).toBe(true)
+  })
 })
 
 describe('recurrenceFromPreset', () => {

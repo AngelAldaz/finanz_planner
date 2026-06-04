@@ -77,6 +77,7 @@ interface PlanState {
     name: string
     amount: number
     categoryId?: ID
+    creditEligible?: boolean
     rule: RecurrenceRule
   }) => Promise<void>
   updateMovement: (m: Movement) => Promise<void>
@@ -211,7 +212,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     await get().refresh()
   },
 
-  addRecurring: async ({ name, amount, categoryId, rule }) => {
+  addRecurring: async ({ name, amount, categoryId, creditEligible, rule }) => {
     const { activeScenarioId, movements, horizon } = get()
     if (!activeScenarioId) return
     const baseOrder = movements.length ? Math.max(...movements.map((m) => m.order)) + 1 : 0
@@ -221,6 +222,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       name,
       amount,
       categoryId,
+      creditEligible,
       rule,
       included: true,
     }

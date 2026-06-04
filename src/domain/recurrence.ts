@@ -110,6 +110,7 @@ export function expandRecurrence(rec: ScenarioRecurrence, horizon: Horizon): Mov
     amount: rec.amount,
     date,
     categoryId: rec.categoryId,
+    creditEligible: rec.creditEligible,
     included: true,
     source: { kind: 'recurrence' as const, ruleId: rec.id, occurrenceKey: `${rec.id}@${date}` },
     order: i,

@@ -126,6 +126,7 @@ export function PlanScreen() {
         name: data.name,
         amount: data.amount,
         categoryId: data.categoryId,
+        creditEligible: data.creditEligible,
         rule: data.recurrence,
       })
       return
