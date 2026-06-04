@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Drawer } from 'vaul'
-import { Trash2 } from 'lucide-react'
+import { Repeat, Trash2 } from 'lucide-react'
 import type {
   Category,
   Cents,
@@ -44,6 +44,7 @@ interface Props {
   cards: CreditCard[]
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
+  onDeleteFollowing?: (movement: Movement) => void
 }
 
 const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
@@ -82,6 +83,7 @@ export function MovementSheet({
   cards,
   onSubmit,
   onDelete,
+  onDeleteFollowing,
 }: Props) {
   const [mode, setMode] = useState<SheetMode>('gasto')
   const [name, setName] = useState('')
@@ -94,6 +96,7 @@ export function MovementSheet({
   const [account, setAccount] = useState<ID>(LIQUID)
   const [blockOn, setBlockOn] = useState(true)
   const [repeat, setRepeat] = useState<RecurrencePreset>('once')
+  const [deleteMode, setDeleteMode] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -109,6 +112,7 @@ export function MovementSheet({
     setAccount(m?.accountId ?? LIQUID)
     setBlockOn(m?.cardBlock?.blocked ?? true)
     setRepeat('once')
+    setDeleteMode(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -127,6 +131,7 @@ export function MovementSheet({
   const isReal = mode === 'real'
   const isPago = mode === 'pago'
   const isBloqueo = mode === 'bloqueo'
+  const isRecurring = movement?.source?.kind === 'recurrence'
   const cardName = (id?: ID) => cards.find((c) => c.id === id)?.name ?? 'tarjeta'
 
   const canSave = isBloqueo
@@ -197,6 +202,12 @@ export function MovementSheet({
               {movement ? 'Editar movimiento' : 'Nuevo movimiento'}
             </Drawer.Title>
             <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
+
+            {isRecurring && (
+              <div className="flex items-center gap-2 rounded-chunky border-2 border-ink bg-ink/5 px-3 py-2 text-sm font-semibold">
+                <Repeat size={15} /> Parte de una serie recurrente
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               {modes.map((mo) => (
@@ -397,27 +408,60 @@ export function MovementSheet({
               </>
             )}
 
-            <div className="flex gap-2 pt-1">
-              {movement && onDelete && (
+            {deleteMode ? (
+              <div className="space-y-2 pt-1">
+                <p className="px-1 text-sm font-semibold">¿Qué quieres borrar de la serie?</p>
                 <button
                   onClick={() => {
-                    onDelete(movement.id)
+                    if (movement) onDelete?.(movement.id)
                     onOpenChange(false)
                   }}
-                  aria-label="Eliminar"
-                  className="flex items-center justify-center rounded-chunky border-2 border-ink bg-surface px-4 py-3 text-neg active:translate-y-0.5"
+                  className="w-full rounded-chunky border-2 border-ink bg-surface py-3 text-sm font-bold text-neg active:translate-y-0.5"
                 >
-                  <Trash2 size={18} />
+                  Solo este registro
                 </button>
-              )}
-              <button
-                onClick={submit}
-                disabled={!canSave}
-                className="flex-1 rounded-chunky border-2 border-ink bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
-              >
-                {movement ? 'Guardar' : 'Agregar'}
-              </button>
-            </div>
+                <button
+                  onClick={() => {
+                    if (movement) onDeleteFollowing?.(movement)
+                    onOpenChange(false)
+                  }}
+                  className="w-full rounded-chunky border-2 border-ink bg-neg py-3 text-sm font-bold text-white shadow-hard-sm active:translate-y-0.5"
+                >
+                  Este y todos los siguientes
+                </button>
+                <button
+                  onClick={() => setDeleteMode(false)}
+                  className="w-full py-2 text-sm font-semibold text-muted"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2 pt-1">
+                {movement && onDelete && (
+                  <button
+                    onClick={() => {
+                      if (isRecurring) setDeleteMode(true)
+                      else {
+                        onDelete(movement.id)
+                        onOpenChange(false)
+                      }
+                    }}
+                    aria-label="Eliminar"
+                    className="flex items-center justify-center rounded-chunky border-2 border-ink bg-surface px-4 py-3 text-neg active:translate-y-0.5"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+                <button
+                  onClick={submit}
+                  disabled={!canSave}
+                  className="flex-1 rounded-chunky border-2 border-ink bg-accent py-3 text-base font-bold text-ink shadow-hard transition-transform active:translate-x-0.5 active:translate-y-0.5 active:shadow-hard-sm disabled:opacity-40"
+                >
+                  {movement ? 'Guardar' : 'Agregar'}
+                </button>
+              </div>
+            )}
           </div>
         </Drawer.Content>
       </Drawer.Portal>

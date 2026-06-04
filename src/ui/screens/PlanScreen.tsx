@@ -38,6 +38,7 @@ export function PlanScreen() {
   const addRecurring = usePlanStore((s) => s.addRecurring)
   const updateMovement = usePlanStore((s) => s.updateMovement)
   const deleteMovement = usePlanStore((s) => s.deleteMovement)
+  const deleteSeriesFrom = usePlanStore((s) => s.deleteSeriesFrom)
   const toggleIncluded = usePlanStore((s) => s.toggleIncluded)
   const setRealBalance = usePlanStore((s) => s.setRealBalance)
   const addCard = usePlanStore((s) => s.addCard)
@@ -333,6 +334,7 @@ export function PlanScreen() {
         cards={creditCards}
         onSubmit={handleSubmit}
         onDelete={deleteMovement}
+        onDeleteFollowing={(mv) => void deleteSeriesFrom(mv)}
       />
       <CardSheet
         open={cardSheetOpen}

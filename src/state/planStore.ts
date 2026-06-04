@@ -57,6 +57,8 @@ interface PlanState {
   }) => Promise<void>
   updateMovement: (m: Movement) => Promise<void>
   deleteMovement: (id: ID) => Promise<void>
+  /** Borra una ocurrencia y todas las siguientes de su misma serie (mismo ruleId). */
+  deleteSeriesFrom: (movement: Movement) => Promise<void>
   toggleIncluded: (id: ID) => Promise<void>
   setRealBalance: (weekStart: ISODate, amount: number, name?: string, accountId?: ID) => Promise<void>
   duplicateActiveScenario: (name: string) => Promise<void>
@@ -167,6 +169,20 @@ export const usePlanStore = create<PlanState>((set, get) => ({
 
   deleteMovement: async (id) => {
     await repository.deleteMovement(id)
+    await get().refresh()
+  },
+
+  deleteSeriesFrom: async (movement) => {
+    const ruleId = movement.source?.ruleId
+    if (!ruleId) {
+      await get().deleteMovement(movement.id)
+      return
+    }
+    const from = effectiveDate(movement)
+    const toDelete = get().movements.filter(
+      (m) => m.source?.ruleId === ruleId && effectiveDate(m) >= from,
+    )
+    await Promise.all(toDelete.map((m) => repository.deleteMovement(m.id)))
     await get().refresh()
   },
 
