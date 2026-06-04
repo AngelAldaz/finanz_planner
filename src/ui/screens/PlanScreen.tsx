@@ -22,6 +22,7 @@ import { dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../
 import { sortMovements } from '../../domain/ledger'
 import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
+import { formatMXNCompact } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
 export function PlanScreen() {
@@ -41,6 +42,7 @@ export function PlanScreen() {
   const deleteSeriesFrom = usePlanStore((s) => s.deleteSeriesFrom)
   const toggleIncluded = usePlanStore((s) => s.toggleIncluded)
   const setRealBalance = usePlanStore((s) => s.setRealBalance)
+  const lowBalanceThreshold = usePlanStore((s) => s.lowBalanceThreshold)
   const addCard = usePlanStore((s) => s.addCard)
   const updateCard = usePlanStore((s) => s.updateCard)
   const deleteCard = usePlanStore((s) => s.deleteCard)
@@ -282,7 +284,7 @@ export function PlanScreen() {
         </button>
       </div>
 
-      <Hero computed={computed} />
+      <Hero computed={computed} threshold={lowBalanceThreshold} />
 
       <CardStrip
         cards={computed.cardStates}
@@ -347,8 +349,8 @@ export function PlanScreen() {
   )
 }
 
-function Hero({ computed }: { computed: ComputedScenario }) {
-  const neg = computed.firstNegativeWeek
+function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: number }) {
+  const alertWeek = computed.weeks.find((w) => w.lowestBalance < threshold)
   return (
     <div className="rounded-chunky border-2 border-ink bg-ink p-5 text-paper shadow-hard">
       <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
@@ -361,10 +363,14 @@ function Hero({ computed }: { computed: ComputedScenario }) {
       <div
         className={cn(
           'mt-3 inline-block rounded-full border-2 px-3 py-1 text-xs font-bold',
-          neg ? 'border-neg bg-neg text-white' : 'border-accent bg-accent text-ink',
+          alertWeek ? 'border-neg bg-neg text-white' : 'border-accent bg-accent text-ink',
         )}
       >
-        {neg ? `En rojo: semana ${neg.label}` : 'Nunca te quedas en rojo ✓'}
+        {alertWeek
+          ? `⚠ Baja a ${formatMXNCompact(alertWeek.lowestBalance)} · ${alertWeek.key.label}`
+          : threshold > 0
+            ? `Siempre arriba de ${formatMXNCompact(threshold)} ✓`
+            : 'Nunca te quedas en rojo ✓'}
       </div>
     </div>
   )

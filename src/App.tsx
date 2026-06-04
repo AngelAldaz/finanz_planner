@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePlanStore } from './state/planStore'
 import { PlanScreen } from './ui/screens/PlanScreen'
+
+// Recharts es pesado → carga diferida (solo al abrir Gráficas)
+const ChartsScreen = lazy(() =>
+  import('./ui/screens/ChartsScreen').then((m) => ({ default: m.ChartsScreen })),
+)
 
 type Tab = 'plan' | 'escenarios' | 'graficas' | 'catalogos' | 'ajustes'
 
@@ -33,6 +38,10 @@ export default function App() {
           <Loading />
         ) : tab === 'plan' ? (
           <PlanScreen />
+        ) : tab === 'graficas' ? (
+          <Suspense fallback={<Loading />}>
+            <ChartsScreen />
+          </Suspense>
         ) : (
           <Placeholder tab={tab} />
         )}
