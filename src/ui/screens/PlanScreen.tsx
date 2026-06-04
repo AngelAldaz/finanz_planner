@@ -16,6 +16,7 @@ import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
 import { CardSheet } from './CardSheet'
 import { eachWeekStart, mondayOf, weekRangeLabel } from '../../domain/dates'
+import { sortMovements } from '../../domain/ledger'
 import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
 import { cn } from '../../lib/cn'
@@ -60,13 +61,13 @@ export function PlanScreen() {
 
   const weekMap = useMemo(() => {
     const m = new Map<string, Movement[]>()
-    for (const mv of movements) {
+    // mismo orden que el motor: (fecha efectiva, order) → la lista coincide con el saldo corriente
+    for (const mv of sortMovements(movements)) {
       const wk = mondayOf(mv.date ?? mv.weekStart ?? horizon.start)
       const arr = m.get(wk)
       if (arr) arr.push(mv)
       else m.set(wk, [mv])
     }
-    for (const arr of m.values()) arr.sort((a, b) => a.order - b.order)
     return m
   }, [movements, horizon])
   const shownWeeks = useMemo(() => [...weekMap.keys()].sort(), [weekMap])

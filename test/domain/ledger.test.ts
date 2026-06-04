@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLedger } from '../../src/domain/ledger'
+import { computeLedger, sortMovements } from '../../src/domain/ledger'
 import { weekSummaries } from '../../src/domain/weeks'
 import type { Movement, MovementKind } from '../../src/domain/types'
 
@@ -66,5 +66,14 @@ describe('weekSummaries', () => {
     expect(w.totalOut).toBe(-300)
     expect(w.hadAnchor).toBe(true)
     expect(w.key.label).toBe('25 al 31 mayo')
+  })
+})
+
+describe('sortMovements', () => {
+  it('ordena por fecha efectiva antes que por el campo order', () => {
+    const base = { scenarioId: 's', kind: 'delta' as const, amount: -100, included: true }
+    const viaje6: Movement = { ...base, id: 'a', name: 'viaje', date: '2026-06-06', order: 0 }
+    const compras3: Movement = { ...base, id: 'b', name: 'compras', date: '2026-06-03', order: 5 }
+    expect(sortMovements([viaje6, compras3]).map((m) => m.name)).toEqual(['compras', 'viaje'])
   })
 })
