@@ -123,3 +123,10 @@ export function eachWeekStart(from: ISODate, to: ISODate): ISODate[] {
   }
   return out
 }
+
+const DOW_ABBR = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+/** "Mié 3" — día de la semana abreviado + número de día. */
+export function dayLabel(iso: ISODate): string {
+  return `${DOW_ABBR[weekdayMon(iso)]} ${parseISO(iso).d}`
+}
