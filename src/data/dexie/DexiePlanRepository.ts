@@ -131,6 +131,9 @@ export class DexiePlanRepository implements PlanRepository {
   async putCategory(c: Category) {
     await this.db.categories.put(c)
   }
+  async deleteCategory(id: ID) {
+    await this.db.categories.delete(id)
+  }
 
   // ----- catalogs -----
   listCatalogItems(catalog?: CatalogKind) {

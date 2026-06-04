@@ -44,6 +44,7 @@ export interface PlanRepository {
   // categories
   listCategories(): Promise<Category[]>
   putCategory(c: Category): Promise<void>
+  deleteCategory(id: ID): Promise<void>
 
   // catalogs
   listCatalogItems(catalog?: CatalogKind): Promise<CatalogItem[]>

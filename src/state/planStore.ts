@@ -91,6 +91,9 @@ interface PlanState {
   addCard: (name: string, limit: number) => Promise<void>
   updateCard: (card: CreditCard) => Promise<void>
   deleteCard: (id: ID) => Promise<void>
+  addCategory: (name: string, color: string) => Promise<void>
+  updateCategory: (cat: Category) => Promise<void>
+  deleteCategory: (id: ID) => Promise<void>
 }
 
 export const usePlanStore = create<PlanState>((set, get) => ({
@@ -345,5 +348,18 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   deleteCard: async (id) => {
     await repository.deleteCreditCard(id)
     set({ creditCards: await repository.listCreditCards() })
+  },
+
+  addCategory: async (name, color) => {
+    await repository.putCategory({ id: newId(), name, color, kind: 'mixed' })
+    set({ categories: await repository.listCategories() })
+  },
+  updateCategory: async (cat) => {
+    await repository.putCategory(cat)
+    set({ categories: await repository.listCategories() })
+  },
+  deleteCategory: async (id) => {
+    await repository.deleteCategory(id)
+    set({ categories: await repository.listCategories() })
   },
 }))

@@ -3,6 +3,7 @@ import { usePlanStore } from './state/planStore'
 import { useUiStore } from './state/uiStore'
 import { PlanScreen } from './ui/screens/PlanScreen'
 import { EscenariosScreen } from './ui/screens/EscenariosScreen'
+import { CategoriasScreen } from './ui/screens/CategoriasScreen'
 import { AjustesScreen } from './ui/screens/AjustesScreen'
 import { LockScreen } from './ui/screens/LockScreen'
 
@@ -17,7 +18,7 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'plan', label: 'Plan', glyph: '▤' },
   { id: 'escenarios', label: 'Escenarios', glyph: '⧉' },
   { id: 'graficas', label: 'Gráficas', glyph: '◔' },
-  { id: 'catalogos', label: 'Catálogos', glyph: '☰' },
+  { id: 'catalogos', label: 'Categorías', glyph: '☰' },
   { id: 'ajustes', label: 'Ajustes', glyph: '⚙' },
 ]
 
@@ -52,6 +53,8 @@ export default function App() {
           </Suspense>
         ) : tab === 'escenarios' ? (
           <EscenariosScreen />
+        ) : tab === 'catalogos' ? (
+          <CategoriasScreen />
         ) : tab === 'ajustes' ? (
           <AjustesScreen />
         ) : (
