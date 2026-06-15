@@ -8,10 +8,19 @@ export function effectiveDate(m: Movement): ISODate {
   return m.date ?? m.weekStart ?? '9999-12-31'
 }
 
+// Orden dentro de un mismo día: saldo real → bloqueos → ENTRADAS → SALIDAS (gastos y pagos).
+function flowRank(m: Movement): number {
+  if (m.kind === 'anchor') return 0
+  if (m.cardBlock) return 1
+  return m.amount > 0 ? 2 : 3 // entrada antes que salida
+}
+
 export function sortMovements(movements: Movement[]): Movement[] {
   return [...movements].sort((a, b) => {
     const c = compareISO(effectiveDate(a), effectiveDate(b))
-    return c !== 0 ? c : a.order - b.order
+    if (c !== 0) return c
+    const r = flowRank(a) - flowRank(b)
+    return r !== 0 ? r : a.order - b.order
   })
 }
 

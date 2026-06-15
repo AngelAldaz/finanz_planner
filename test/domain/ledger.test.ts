@@ -16,24 +16,26 @@ const make = (rows: Array<[string, number, MovementKind?, string?]>): Movement[]
   }))
 
 describe('computeLedger', () => {
-  it('anchor fija el saldo, delta suma', () => {
+  it('mismo día: anchor primero, luego entradas y al final salidas', () => {
     const pts = computeLedger(
       make([
-        ['inicio', 1000, 'anchor'],
         ['gasto', -300],
         ['ingreso', 500],
+        ['inicio', 1000, 'anchor'],
       ]),
     )
-    expect(pts.map((p) => p.balanceAfter)).toEqual([1000, 700, 1200])
+    // sin importar el orden de captura: saldo real → entrada → salida
+    expect(pts.map((p) => p.movement.name)).toEqual(['inicio', 'ingreso', 'gasto'])
+    expect(pts.map((p) => p.balanceAfter)).toEqual([1000, 1500, 1200])
   })
 
-  it('anchor a media semana re-ancla al saldo real', () => {
+  it('un anchor en una semana posterior re-ancla al saldo real', () => {
     const pts = computeLedger(
       make([
-        ['inicio', 1000, 'anchor'],
-        ['gasto', -300],
-        ['saldo real', 5000, 'anchor'],
-        ['gasto', -1000],
+        ['inicio', 1000, 'anchor', '2026-05-25'],
+        ['gasto', -300, 'delta', '2026-05-25'],
+        ['saldo real', 5000, 'anchor', '2026-06-01'],
+        ['gasto', -1000, 'delta', '2026-06-01'],
       ]),
     )
     expect(pts.map((p) => p.balanceAfter)).toEqual([1000, 700, 5000, 4000])
@@ -54,16 +56,17 @@ describe('weekSummaries', () => {
     const pts = computeLedger(
       make([
         ['inicio', 100, 'anchor'],
-        ['gasto', -300],
-        ['ingreso', 500],
+        ['ingreso', 200],
+        ['gasto', -500],
       ]),
     )
     const [w] = weekSummaries(pts)
+    // entrada primero (100 → 300) y luego la salida (→ -200)
     expect(w.lowestBalance).toBe(-200)
     expect(w.goesNegative).toBe(true)
-    expect(w.closingBalance).toBe(300)
-    expect(w.totalIn).toBe(500)
-    expect(w.totalOut).toBe(-300)
+    expect(w.closingBalance).toBe(-200)
+    expect(w.totalIn).toBe(200)
+    expect(w.totalOut).toBe(-500)
     expect(w.hadAnchor).toBe(true)
     expect(w.key.label).toBe('25 al 31 mayo')
   })

@@ -26,7 +26,8 @@ describe('compuerta de aceptación — datos reales del Excel', () => {
 
   it('saldo final, mínimo y nunca en rojo', () => {
     expect(computed.finalBalance).toBe(toCents(19750.96))
-    expect(computed.minBalance).toBe(toCents(5876.3)) // tras pagar Credito BBVA
+    // con "entradas antes que salidas" el mínimo intra-semana es más optimista
+    expect(computed.minBalance).toBe(toCents(10500.96))
     expect(computed.firstNegativeWeek).toBeUndefined()
   })
 })

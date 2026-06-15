@@ -58,16 +58,15 @@ describe('enrutado débito/crédito', () => {
   it('pagar la tarjeta baja el líquido y regresa el crédito disponible', () => {
     const pts = computeLedger(
       [
-        mv({ name: 'inicio', kind: 'anchor', amount: 100000 }),
-        mv({ name: 'compra', amount: -120000, creditEligible: true }), // crédito → deuda 120000
-        mv({ name: 'ingreso', amount: 200000 }), // líquido 300000
-        mv({ name: 'pago visa', amount: -120000, payCardId: 'visa' }), // líquido 180000, deuda 0
+        mv({ name: 'inicio', kind: 'anchor', amount: 100000 }), // líquido 1000
+        mv({ name: 'compra', amount: -150000, creditEligible: true }), // 1000-1500<0 → crédito, deuda 1500
+        mv({ name: 'pago visa', amount: -50000, payCardId: 'visa' }), // abona 500 → deuda 1000, líquido 500
       ],
       [card('visa', 500000)],
     )
     const last = pts[pts.length - 1]
-    expect(last.balanceAfter).toBe(180000)
-    expect(last.cardDebtAfter['visa']).toBe(0)
+    expect(last.balanceAfter).toBe(50000)
+    expect(last.cardDebtAfter['visa']).toBe(100000) // 150000 - 50000 (regresó crédito)
   })
 
   it('elige la tarjeta con MÁS crédito disponible', () => {
@@ -113,10 +112,10 @@ describe('enrutado débito/crédito', () => {
   it('un evento de bloqueo apaga la tarjeta a partir de ahí', () => {
     const pts = computeLedger(
       [
-        mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
-        mv({ name: 'compra A', amount: -50000, creditEligible: true }), // antes → crédito
-        mv({ name: 'bloquear', amount: 0, cardBlock: { cardId: 'visa', blocked: true } }),
-        mv({ name: 'compra B', amount: -50000, creditEligible: true }), // ya apagada → débito (rojo)
+        mv({ name: 'inicio', kind: 'anchor', amount: 0, weekStart: '2026-05-25' }),
+        mv({ name: 'compra A', amount: -50000, creditEligible: true, weekStart: '2026-05-25' }), // sem 1 → crédito
+        mv({ name: 'bloquear', amount: 0, cardBlock: { cardId: 'visa', blocked: true }, weekStart: '2026-06-01' }),
+        mv({ name: 'compra B', amount: -50000, creditEligible: true, weekStart: '2026-06-01' }), // sem 2, apagada → débito (rojo)
       ],
       [card('visa', 500000)],
     )
