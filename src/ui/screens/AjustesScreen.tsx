@@ -6,7 +6,7 @@ import { useCloudStore } from '../../state/cloudStore'
 import { repository } from '../../data'
 import { fromCents, toCents } from '../../domain/money'
 import {
-  currentPushStatus,
+  currentPush,
   disablePush,
   enablePush,
   isStandalone,
@@ -341,7 +341,10 @@ function NotificationsSection() {
       setStatus('off')
       return
     }
-    void currentPushStatus().then(setStatus)
+    void currentPush().then((r) => {
+      setStatus(r.status)
+      setHour(r.hour)
+    })
   }, [])
 
   if (!pushConfigured) {
@@ -400,7 +403,11 @@ function NotificationsSection() {
         cerrada.
       </p>
       {err && <p className="px-1 text-sm font-semibold text-neg">{err}</p>}
-      <Field label="Hora del aviso">
+      {/* select fuera de <label>: en iOS un <select> dentro de <label> a veces abre y cierra el picker */}
+      <div className="rounded-chunky border-2 border-line bg-canvas px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Hora del aviso
+        </span>
         <select
           value={hour}
           onChange={(e) => {
@@ -408,7 +415,7 @@ function NotificationsSection() {
             setHour(h)
             if (status === 'on') void updateNotifyHour(h)
           }}
-          className="w-full bg-transparent text-base outline-none"
+          className="mt-0.5 w-full appearance-none bg-transparent text-base outline-none"
         >
           {Array.from({ length: 24 }, (_, h) => (
             <option key={h} value={h}>
@@ -416,7 +423,7 @@ function NotificationsSection() {
             </option>
           ))}
         </select>
-      </Field>
+      </div>
       <button
         onClick={() => void toggle()}
         disabled={busy || status === 'loading'}

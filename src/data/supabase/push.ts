@@ -40,6 +40,24 @@ export async function currentPushStatus(): Promise<'on' | 'off'> {
   return sub ? 'on' : 'off'
 }
 
+/** Estado actual + la hora de aviso GUARDADA (para que la UI muestre el valor real). */
+export async function currentPush(): Promise<{ status: 'on' | 'off'; hour: number }> {
+  if (!pushSupported()) return { status: 'off', hour: 9 }
+  const reg = await navigator.serviceWorker.ready
+  const sub = await reg.pushManager.getSubscription()
+  if (!sub) return { status: 'off', hour: 9 }
+  let hour = 9
+  if (supabase) {
+    const { data } = await supabase
+      .from('push_subscriptions')
+      .select('notify_hour')
+      .eq('endpoint', sub.endpoint)
+      .maybeSingle()
+    if (data?.notify_hour != null) hour = Number(data.notify_hour)
+  }
+  return { status: 'on', hour }
+}
+
 /** Pide permiso, se suscribe y guarda la suscripción en Supabase. Debe llamarse desde un gesto. */
 export async function enablePush(notifyHour: number): Promise<void> {
   if (!supabase) throw new Error('Nube no configurada')
