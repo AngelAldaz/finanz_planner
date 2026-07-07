@@ -63,6 +63,17 @@ describe('recurrencias', () => {
     ).toEqual(['2026-08-14'])
   })
 
+  it('primer día del mes en sábado NO se pierde (se ajusta a viernes anterior)', () => {
+    // 2026-08-01 es sábado → 2026-07-31 (vie). Con horizonte que empieza antes, debe incluirse.
+    const out = dates(
+      { startDate: '2026-08-01', daysOfMonth: [1], businessDayAdjust: 'previous' },
+      { start: '2026-07-25', end: '2026-10-15' },
+    )
+    expect(out).toContain('2026-07-31') // agosto, ajustado
+    expect(out).toContain('2026-09-01') // septiembre, sin ajuste
+    expect(out).toContain('2026-10-01')
+  })
+
   it('primer viernes del mes', () => {
     expect(dates({ startDate: '2026-06-01', nthWeekday: { nth: 1, weekday: 4 } })).toEqual([
       '2026-06-05',

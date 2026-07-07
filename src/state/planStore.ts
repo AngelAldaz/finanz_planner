@@ -90,10 +90,19 @@ async function topUpRecurrences(scenarioId: ID, movements: Movement[]): Promise<
       const d = m.date ?? m.weekStart ?? ''
       return d > a ? d : a
     }, '')
-    for (const gmv of expandRecurrence(rule, { start: rule.rule.startDate, end })) {
+    // fecha más temprana ya materializada → para rellenar ocurrencias FALTANTES al inicio
+    const minDate = occs.reduce((a, m) => {
+      const d = m.date ?? m.weekStart ?? ''
+      return a === '' || (d !== '' && d < a) ? d : a
+    }, '')
+    for (const gmv of expandRecurrence(rule, { start: addDays(rule.rule.startDate, -7), end })) {
       const key = gmv.source?.occurrenceKey
       const gd = gmv.date ?? ''
-      if (key && !existingKeys.has(key) && gd > maxDate) toAdd.push({ ...gmv, order: baseOrder++ })
+      // extiende la cola (gd > max) y rellena la cabeza (gd < min): repara series a las que la
+      // primera ocurrencia se les había perdido por el ajuste de día hábil
+      const isTail = gd > maxDate
+      const isHead = minDate !== '' && gd < minDate
+      if (key && !existingKeys.has(key) && (isTail || isHead)) toAdd.push({ ...gmv, order: baseOrder++ })
     }
   }
   if (toAdd.length) {
@@ -344,9 +353,11 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       rule,
       included: true,
     }
-    // guarda la REGLA (para poder extender la serie luego) y materializa hasta el horizonte largo
+    // guarda la REGLA (para poder extender la serie luego) y materializa hasta el horizonte largo.
+    // el inicio se corre unos días atrás para no recortar la primera ocurrencia si el ajuste de
+    // día hábil la mueve a un viernes anterior (p.ej. un día 1 que cae en sábado).
     await repository.putRecurrence(rec)
-    const recurHorizon: Horizon = { start: rule.startDate, end: materializeEnd() }
+    const recurHorizon: Horizon = { start: addDays(rule.startDate, -7), end: materializeEnd() }
     const generated = expandRecurrence(rec, recurHorizon).map((m, i) => ({ ...m, order: baseOrder + i }))
     if (generated.length) await repository.bulkPutMovements(generated)
     await get().refresh()
