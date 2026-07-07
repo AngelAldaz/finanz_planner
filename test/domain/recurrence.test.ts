@@ -105,6 +105,11 @@ describe('recurrenceFromPreset', () => {
   it('cada 15 días = intervalo de 15 días', () => {
     expect(recurrenceFromPreset('every15', '2026-06-01')?.every).toEqual({ n: 15, unit: 'day' })
   })
+  it('mensual = día literal, SIN ajuste de día hábil', () => {
+    const rule = recurrenceFromPreset('monthly', '2026-08-01')
+    expect(rule?.daysOfMonth).toEqual([1])
+    expect(rule?.businessDayAdjust).toBeUndefined()
+  })
   it('once no genera regla', () => {
     expect(recurrenceFromPreset('once', '2026-06-01')).toBeUndefined()
   })

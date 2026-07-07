@@ -181,7 +181,8 @@ export function recurrenceFromPreset(
     case 'biweekly':
       return { startDate, every: { n: 2, unit: 'week' } }
     case 'monthly':
-      return { startDate, daysOfMonth: [dom], businessDayAdjust: 'previous' }
+      // gasto mensual = el día literal (sin mover a día hábil)
+      return { startDate, daysOfMonth: [dom] }
     case 'quincena':
       return { startDate, daysOfMonth: [15, 'last'], businessDayAdjust: 'previous' }
     case 'every15':

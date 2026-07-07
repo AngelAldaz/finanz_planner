@@ -112,6 +112,41 @@ async function topUpRecurrences(scenarioId: ID, movements: Movement[]): Promise<
   return false
 }
 
+/** Migración: los gastos MENSUALES (un solo día del mes) ya no usan ajuste de día hábil —
+ *  el gasto cae el día literal. Re-sincroniza las ocurrencias de esas series (borra las
+ *  desplazadas a viernes y añade las del día correcto). Corre una sola vez por regla. */
+async function migrateMonthlyRules(scenarioId: ID, movements: Movement[]): Promise<boolean> {
+  const rules = await repository.listRecurrences(scenarioId)
+  const end = materializeEnd()
+  let baseOrder = movements.length ? Math.max(...movements.map((m) => m.order)) + 1 : 0
+  let changed = false
+
+  for (const rule of rules) {
+    const dom = rule.rule.daysOfMonth
+    const adj = rule.rule.businessDayAdjust
+    const isMonthly = !!dom && dom.length === 1 && typeof dom[0] === 'number'
+    if (!isMonthly || (adj !== 'previous' && adj !== 'next')) continue
+
+    const newRule = { ...rule, rule: { ...rule.rule, businessDayAdjust: 'none' as const } }
+    await repository.putRecurrence(newRule)
+
+    const occs = movements.filter((m) => m.source?.ruleId === rule.id)
+    const existingKeys = new Set(occs.map((m) => m.source?.occurrenceKey))
+    const correct = expandRecurrence(newRule, { start: addDays(newRule.rule.startDate, -7), end })
+    const correctKeys = new Set(correct.map((m) => m.source?.occurrenceKey))
+
+    const toDelete = occs.filter((m) => !correctKeys.has(m.source?.occurrenceKey))
+    const toAdd = correct
+      .filter((m) => !existingKeys.has(m.source?.occurrenceKey))
+      .map((m) => ({ ...m, order: baseOrder++ }))
+
+    if (toDelete.length) await Promise.all(toDelete.map((m) => repository.deleteMovement(m.id)))
+    if (toAdd.length) await repository.bulkPutMovements(toAdd)
+    if (toDelete.length || toAdd.length) changed = true
+  }
+  return changed
+}
+
 function dynamicHorizon(plan: Plan | undefined, movements: Movement[]): Horizon {
   const todayMon = todayMondayISO()
   const dates = movements.map((m) => m.date ?? m.weekStart).filter((x): x is string => !!x)
@@ -283,6 +318,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       repository.listMovements(id),
       repository.listRecurrences(id),
     ])
+    if (await migrateMonthlyRules(id, movements)) movements = await repository.listMovements(id)
     if (await topUpRecurrences(id, movements)) movements = await repository.listMovements(id)
     const plan = get().plans.find((p) => p.id === get().activePlanId)
     set({ activeScenarioId: id, movements, recurrences, horizon: dynamicHorizon(plan, movements) })
@@ -295,6 +331,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       repository.listMovements(id),
       repository.listRecurrences(id),
     ])
+    if (await migrateMonthlyRules(id, movements)) movements = await repository.listMovements(id)
     if (await topUpRecurrences(id, movements)) movements = await repository.listMovements(id)
     const plan = get().plans.find((p) => p.id === get().activePlanId)
     set({ movements, recurrences, horizon: dynamicHorizon(plan, movements) })
