@@ -463,14 +463,14 @@ function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: 
   return (
     <div className="rounded-chunky border-2 border-line bg-ink p-5 text-paper shadow-hard">
       {hasDebit ? (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">Efectivo</p>
-            <Money cents={efectivo} className="mt-0.5 block text-3xl font-bold text-paper" />
+            <Money cents={efectivo} className="text-3xl font-bold text-paper" />
           </div>
-          <div>
+          <div className="flex items-baseline justify-between gap-3 border-t-2 border-paper/15 pt-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">Débito</p>
-            <Money cents={debito} className="mt-0.5 block text-3xl font-bold text-paper" />
+            <Money cents={debito} className="text-3xl font-bold text-paper" />
           </div>
         </div>
       ) : (
