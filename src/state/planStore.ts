@@ -3,6 +3,7 @@ import type {
   Category,
   Cents,
   CreditCard,
+  DebitAccount,
   Horizon,
   ID,
   ISODate,
@@ -12,7 +13,7 @@ import type {
   Scenario,
   ScenarioRecurrence,
 } from '../domain/types'
-import { LIQUID } from '../domain/types'
+import { EFECTIVO_NAME, LIQUID } from '../domain/types'
 import { repository, newId, nowISO } from '../data'
 import { buildEmptyBundle, buildSeedBundle } from '../data/seed/seedData'
 import { addDays, mondayOf } from '../domain/dates'
@@ -47,9 +48,26 @@ export interface AddMovementInput {
   date?: ISODate
   weekStart?: ISODate
   categoryId?: ID
+  cashEligible?: boolean
+  debitEligible?: boolean
   creditEligible?: boolean
+  paidWith?: ID
+  accountId?: ID
   payCardId?: ID
   cardBlock?: { cardId: ID; blocked: boolean }
+}
+
+/** Nombre a mostrar de una cuenta (efectivo / débito / crédito). */
+function accountLabel(
+  s: { debitAccounts: DebitAccount[]; creditCards: CreditCard[] },
+  accountId: ID,
+): string {
+  if (accountId === LIQUID) return EFECTIVO_NAME
+  return (
+    s.debitAccounts.find((d) => d.id === accountId)?.name ??
+    s.creditCards.find((c) => c.id === accountId)?.name ??
+    'Saldo real'
+  )
 }
 
 interface PlanState {
@@ -58,6 +76,7 @@ interface PlanState {
   scenarios: Scenario[]
   categories: Category[]
   creditCards: CreditCard[]
+  debitAccounts: DebitAccount[]
   activePlanId?: ID
   activeScenarioId?: ID
   movements: Movement[]
@@ -77,7 +96,10 @@ interface PlanState {
     name: string
     amount: number
     categoryId?: ID
+    cashEligible?: boolean
+    debitEligible?: boolean
     creditEligible?: boolean
+    paidWith?: ID
     rule: RecurrenceRule
   }) => Promise<void>
   updateMovement: (m: Movement) => Promise<void>
@@ -93,6 +115,11 @@ interface PlanState {
   addCard: (name: string, limit: number) => Promise<void>
   updateCard: (card: CreditCard) => Promise<void>
   deleteCard: (id: ID) => Promise<void>
+  moveCard: (id: ID, dir: -1 | 1) => Promise<void>
+  addDebitAccount: (name: string) => Promise<void>
+  updateDebitAccount: (a: DebitAccount) => Promise<void>
+  deleteDebitAccount: (id: ID) => Promise<void>
+  moveDebitAccount: (id: ID, dir: -1 | 1) => Promise<void>
   addCategory: (name: string, color: string) => Promise<void>
   updateCategory: (cat: Category) => Promise<void>
   deleteCategory: (id: ID) => Promise<void>
@@ -104,6 +131,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   scenarios: [],
   categories: [],
   creditCards: [],
+  debitAccounts: [],
   movements: [],
   recurrences: [],
   horizon: DEFAULT_HORIZON,
@@ -115,10 +143,11 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }
     const plans = await repository.listPlans()
     const plan = plans[0]
-    const [scenarios, categories, creditCards] = await Promise.all([
+    const [scenarios, categories, creditCards, debitAccounts] = await Promise.all([
       plan ? repository.listScenarios(plan.id) : Promise.resolve([]),
       repository.listCategories(),
       repository.listCreditCards(),
+      repository.listDebitAccounts(),
     ])
     const scenario = scenarios[0]
     set({
@@ -127,6 +156,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       scenarios,
       categories,
       creditCards,
+      debitAccounts,
       activePlanId: plan?.id,
       horizon: dynamicHorizon(plan, []),
       lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
@@ -202,7 +232,11 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       date: input.date,
       weekStart: input.weekStart ?? (input.date ? mondayOf(input.date) : undefined),
       categoryId: input.categoryId,
+      cashEligible: input.cashEligible,
+      debitEligible: input.debitEligible,
       creditEligible: input.creditEligible,
+      paidWith: input.paidWith,
+      accountId: input.accountId,
       payCardId: input.payCardId,
       cardBlock: input.cardBlock,
       included: true,
@@ -212,7 +246,16 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     await get().refresh()
   },
 
-  addRecurring: async ({ name, amount, categoryId, creditEligible, rule }) => {
+  addRecurring: async ({
+    name,
+    amount,
+    categoryId,
+    cashEligible,
+    debitEligible,
+    creditEligible,
+    paidWith,
+    rule,
+  }) => {
     const { activeScenarioId, movements, horizon } = get()
     if (!activeScenarioId) return
     const baseOrder = movements.length ? Math.max(...movements.map((m) => m.order)) + 1 : 0
@@ -222,7 +265,10 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       name,
       amount,
       categoryId,
+      cashEligible,
+      debitEligible,
       creditEligible,
+      paidWith,
       rule,
       included: true,
     }
@@ -293,7 +339,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
         id: newId(),
         scenarioId: activeScenarioId,
         kind: 'anchor',
-        name: name ?? 'Saldo real',
+        name: name ?? accountLabel(get(), accountId),
         amount,
         accountId: storedAccount,
         weekStart,
@@ -357,6 +403,51 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   deleteCard: async (id) => {
     await repository.deleteCreditCard(id)
     set({ creditCards: await repository.listCreditCards() })
+  },
+
+  moveCard: async (id, dir) => {
+    const list = [...get().creditCards].sort((a, b) => a.position - b.position)
+    const i = list.findIndex((c) => c.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    const a = list[i]
+    const b = list[j]
+    await repository.putCreditCard({ ...a, position: b.position })
+    await repository.putCreditCard({ ...b, position: a.position })
+    set({ creditCards: await repository.listCreditCards() })
+  },
+
+  addDebitAccount: async (name) => {
+    const { debitAccounts } = get()
+    await repository.putDebitAccount({
+      id: newId(),
+      name,
+      color: CARD_COLORS[debitAccounts.length % CARD_COLORS.length],
+      position: debitAccounts.length,
+    })
+    set({ debitAccounts: await repository.listDebitAccounts() })
+  },
+
+  updateDebitAccount: async (a) => {
+    await repository.putDebitAccount(a)
+    set({ debitAccounts: await repository.listDebitAccounts() })
+  },
+
+  deleteDebitAccount: async (id) => {
+    await repository.deleteDebitAccount(id)
+    set({ debitAccounts: await repository.listDebitAccounts() })
+  },
+
+  moveDebitAccount: async (id, dir) => {
+    const list = [...get().debitAccounts].sort((a, b) => a.position - b.position)
+    const i = list.findIndex((d) => d.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    const a = list[i]
+    const b = list[j]
+    await repository.putDebitAccount({ ...a, position: b.position })
+    await repository.putDebitAccount({ ...b, position: a.position })
+    set({ debitAccounts: await repository.listDebitAccounts() })
   },
 
   addCategory: async (name, color) => {

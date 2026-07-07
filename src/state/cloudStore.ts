@@ -90,6 +90,7 @@ export const useCloudStore = create<CloudState>((set, get) => ({
         s.movements !== prev.movements ||
         s.scenarios !== prev.scenarios ||
         s.creditCards !== prev.creditCards ||
+        s.debitAccounts !== prev.debitAccounts ||
         s.categories !== prev.categories ||
         s.plans !== prev.plans
       if (!changed) return

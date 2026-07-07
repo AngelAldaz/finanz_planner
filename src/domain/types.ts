@@ -116,7 +116,10 @@ export interface ScenarioRecurrence {
   name: string
   amount: Cents // con signo (las recurrencias son siempre delta)
   categoryId?: ID
+  cashEligible?: boolean
+  debitEligible?: boolean
   creditEligible?: boolean
+  paidWith?: ID
   rule: RecurrenceRule
   included: boolean
 }
