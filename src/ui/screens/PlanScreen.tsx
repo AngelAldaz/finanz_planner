@@ -11,6 +11,7 @@ import {
   Plus,
   Repeat,
   Unlock,
+  Wallet,
   X,
 } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
@@ -18,12 +19,24 @@ import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { MovementSheet, type MovementSubmit, type SheetMode } from './MovementSheet'
 import { CardSheet } from './CardSheet'
+import { DebitSheet } from './DebitSheet'
 import { addDays, dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { sortMovements } from '../../domain/ledger'
-import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
+import type {
+  CardState,
+  Category,
+  ComputedScenario,
+  CreditCard,
+  DebitAccount,
+  ID,
+  ISODate,
+  Movement,
+} from '../../domain/types'
 import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 
 type AccountMeta = { name: string; color: string; kind: 'cash' | 'debit' | 'credit' }
+type PoolBal = { balance: number; kind: 'efectivo' | 'debito' }
+type DebitCardView = { id: ID; name: string; color: string; balance: number; blocked: boolean }
 import { formatMXNCompact } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
@@ -49,11 +62,43 @@ export function PlanScreen() {
   const addCard = usePlanStore((s) => s.addCard)
   const updateCard = usePlanStore((s) => s.updateCard)
   const deleteCard = usePlanStore((s) => s.deleteCard)
+  const addDebitAccount = usePlanStore((s) => s.addDebitAccount)
+  const updateDebitAccount = usePlanStore((s) => s.updateDebitAccount)
+  const deleteDebitAccount = usePlanStore((s) => s.deleteDebitAccount)
 
   const computed = useComputed()
-  const balById = useMemo(
-    () => new Map(computed.points.map((p) => [p.movement.id, p.balanceAfter])),
+  const cashStateById = useMemo(
+    () => new Map(computed.cashStates.map((c) => [c.id, c])),
     [computed],
+  )
+  // saldo corriente del POOL que tocó cada movimiento (efectivo o suma de débitos), sin combinar
+  const poolById = useMemo(() => {
+    const debitIds = new Set(debitAccounts.map((d) => d.id))
+    const m = new Map<ID, PoolBal>()
+    for (const p of computed.points) {
+      const mv = p.movement
+      const touched = mv.kind === 'anchor' ? (mv.accountId ?? LIQUID) : p.paidFrom
+      if (!touched) continue
+      if (touched === LIQUID) {
+        m.set(mv.id, { balance: p.cashAfter[LIQUID] ?? 0, kind: 'efectivo' })
+      } else if (debitIds.has(touched)) {
+        let s = 0
+        for (const d of debitAccounts) s += p.cashAfter[d.id] ?? 0
+        m.set(mv.id, { balance: s, kind: 'debito' })
+      }
+    }
+    return m
+  }, [computed, debitAccounts])
+  const debitCardsView = useMemo<DebitCardView[]>(
+    () =>
+      debitAccounts.map((d) => ({
+        id: d.id,
+        name: d.name,
+        color: d.color,
+        balance: cashStateById.get(d.id)?.balance ?? 0,
+        blocked: cashStateById.get(d.id)?.blocked ?? false,
+      })),
+    [debitAccounts, cashStateById],
   )
   const paidFromById = useMemo(
     () =>
@@ -114,6 +159,8 @@ export function PlanScreen() {
   const [defaultMode, setDefaultMode] = useState<SheetMode | undefined>(undefined)
   const [cardSheetOpen, setCardSheetOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
+  const [debitSheetOpen, setDebitSheetOpen] = useState(false)
+  const [editingDebit, setEditingDebit] = useState<DebitAccount | null>(null)
   const [showPast, setShowPast] = useState(false)
 
   function openNew(week?: ISODate, mode?: SheetMode) {
@@ -187,6 +234,15 @@ export function PlanScreen() {
     }
   }
 
+  function handleSaveDebit(d: { id?: ID; name: string }) {
+    if (d.id) {
+      const existing = debitAccounts.find((x) => x.id === d.id)
+      if (existing) void updateDebitAccount({ ...existing, name: d.name })
+    } else {
+      void addDebitAccount(d.name)
+    }
+  }
+
   function confirmDeleteScenario(id: ID, name: string) {
     if (window.confirm(`¿Borrar el escenario "${name}"? Esto no se puede deshacer.`)) {
       void deleteScenario(id)
@@ -233,7 +289,7 @@ export function PlanScreen() {
             <MovementRow
               key={mv.id}
               mv={mv}
-              balance={balById.get(mv.id)}
+              pool={poolById.get(mv.id)}
               paidFrom={paidFromById.get(mv.id)}
               category={categories.find((c) => c.id === mv.categoryId)}
               accountsById={accountsById}
@@ -307,6 +363,18 @@ export function PlanScreen() {
 
       <Hero computed={computed} threshold={lowBalanceThreshold} />
 
+      <DebitStrip
+        cards={debitCardsView}
+        onAdd={() => {
+          setEditingDebit(null)
+          setDebitSheetOpen(true)
+        }}
+        onEdit={(id) => {
+          setEditingDebit(debitAccounts.find((d) => d.id === id) ?? null)
+          setDebitSheetOpen(true)
+        }}
+      />
+
       <CardStrip
         cards={computed.cardStates}
         onAdd={() => {
@@ -374,30 +442,48 @@ export function PlanScreen() {
         onSave={handleSaveCard}
         onDelete={(id) => void deleteCard(id)}
       />
+      <DebitSheet
+        open={debitSheetOpen}
+        onOpenChange={setDebitSheetOpen}
+        account={editingDebit}
+        onSave={handleSaveDebit}
+        onDelete={(id) => void deleteDebitAccount(id)}
+      />
     </div>
   )
 }
 
 function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: number }) {
   const alertWeek = computed.weeks.find((w) => w.lowestBalance < threshold)
+  const efectivo = computed.cashStates.find((c) => c.id === LIQUID)?.balance ?? 0
+  const debito = computed.cashStates
+    .filter((c) => c.kind === 'debit')
+    .reduce((a, c) => a + c.balance, 0)
+  const hasDebit = computed.cashStates.some((c) => c.kind === 'debit')
   return (
     <div className="rounded-chunky border-2 border-line bg-ink p-5 text-paper shadow-hard">
-      <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
-        Saldo líquido final
-      </p>
-      <Money cents={computed.finalBalance} className="mt-1 block text-4xl font-bold text-paper" />
+      {hasDebit ? (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">Efectivo</p>
+            <Money cents={efectivo} className="mt-0.5 block text-3xl font-bold text-paper" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">Débito</p>
+            <Money cents={debito} className="mt-0.5 block text-3xl font-bold text-paper" />
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
+            Saldo líquido final
+          </p>
+          <Money cents={efectivo} className="mt-1 block text-4xl font-bold text-paper" />
+        </>
+      )}
       <div className="mt-2 text-sm text-paper/70">
         punto más bajo <Money cents={computed.minBalance} className="text-paper" />
       </div>
-      {computed.cashStates.length > 1 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-paper/60">
-          {computed.cashStates.map((cs) => (
-            <span key={cs.id} className={cn(cs.blocked && 'line-through opacity-60')}>
-              {cs.name} <Money cents={cs.balance} className="text-paper/90" />
-            </span>
-          ))}
-        </div>
-      )}
       <div
         className={cn(
           'mt-3 inline-block rounded-full border-2 px-3 py-1 text-xs font-bold',
@@ -410,6 +496,56 @@ function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: 
             ? `Siempre arriba de ${formatMXNCompact(threshold)} ✓`
             : 'Nunca te quedas en rojo ✓'}
       </div>
+    </div>
+  )
+}
+
+function DebitStrip({
+  cards,
+  onAdd,
+  onEdit,
+}: {
+  cards: DebitCardView[]
+  onAdd: () => void
+  onEdit: (id: ID) => void
+}) {
+  if (cards.length === 0) {
+    return (
+      <button
+        onClick={onAdd}
+        className="flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-dashed border-line/40 py-3 text-sm font-semibold text-muted active:bg-surface"
+      >
+        <Wallet size={16} /> Agregar tarjeta de débito
+      </button>
+    )
+  }
+  return (
+    <div className="-mx-4 flex gap-3 overflow-x-auto px-4">
+      {cards.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => onEdit(c.id)}
+          className="w-40 shrink-0 rounded-chunky border-2 border-line bg-surface p-3 text-left shadow-hard-sm"
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} />
+            <span className="truncate text-sm font-bold">{c.name}</span>
+            {c.blocked && <Lock size={12} className="shrink-0 text-muted" />}
+          </div>
+          <Money
+            cents={c.balance}
+            className={cn('mt-2 block text-lg font-bold', c.balance < 0 && 'text-neg')}
+          />
+          <span className="text-[11px] text-muted">{c.blocked ? 'apagada' : 'disponible'}</span>
+        </button>
+      ))}
+      <button
+        onClick={onAdd}
+        aria-label="Agregar tarjeta de débito"
+        className="grid w-12 shrink-0 place-items-center rounded-chunky border-2 border-dashed border-line/40 active:bg-surface"
+      >
+        <Plus size={18} />
+      </button>
     </div>
   )
 }
@@ -484,7 +620,7 @@ function CardStrip({
 
 interface RowProps {
   mv: Movement
-  balance?: number
+  pool?: PoolBal
   paidFrom?: ID
   category?: Category
   accountsById: Map<ID, AccountMeta>
@@ -510,7 +646,7 @@ function movementType(mv: Movement): keyof typeof TYPE_META {
 
 function MovementRow({
   mv,
-  balance,
+  pool,
   paidFrom,
   category,
   accountsById,
@@ -591,8 +727,11 @@ function MovementRow({
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />
           )}
-          {!isCreditAnchor && !isBlock && mv.included && balance != null && (
-            <Money cents={balance} className="block text-xs text-muted" />
+          {!isCreditAnchor && !isBlock && mv.included && pool && (
+            <span className="block text-xs text-muted">
+              {pool.kind === 'debito' && <span className="mr-0.5 opacity-70">déb</span>}
+              <Money cents={pool.balance} />
+            </span>
           )}
         </span>
       </button>
