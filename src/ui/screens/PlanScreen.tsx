@@ -21,7 +21,9 @@ import { CardSheet } from './CardSheet'
 import { addDays, dayLabel, eachWeekStart, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { sortMovements } from '../../domain/ledger'
 import type { CardState, Category, ComputedScenario, CreditCard, ID, ISODate, Movement } from '../../domain/types'
-import { LIQUID } from '../../domain/types'
+import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
+
+type AccountMeta = { name: string; color: string; kind: 'cash' | 'debit' | 'credit' }
 import { formatMXNCompact } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
@@ -30,6 +32,7 @@ export function PlanScreen() {
   const activeScenarioId = usePlanStore((s) => s.activeScenarioId)
   const categories = usePlanStore((s) => s.categories)
   const creditCards = usePlanStore((s) => s.creditCards)
+  const debitAccounts = usePlanStore((s) => s.debitAccounts)
   const movements = usePlanStore((s) => s.movements)
   const horizon = usePlanStore((s) => s.horizon)
   const selectScenario = usePlanStore((s) => s.selectScenario)
@@ -52,18 +55,24 @@ export function PlanScreen() {
     () => new Map(computed.points.map((p) => [p.movement.id, p.balanceAfter])),
     [computed],
   )
-  const chargedById = useMemo(
+  const paidFromById = useMemo(
     () =>
-      new Map(
-        computed.points.filter((p) => p.chargedToCardId).map((p) => [p.movement.id, p.chargedToCardId!]),
-      ),
+      new Map(computed.points.filter((p) => p.paidFrom).map((p) => [p.movement.id, p.paidFrom!])),
     [computed],
   )
   const summaryByWeek = useMemo(
     () => new Map(computed.weeks.map((w) => [w.key.weekStart, w])),
     [computed],
   )
-  const cardsById = useMemo(() => new Map(creditCards.map((c) => [c.id, c])), [creditCards])
+  const accountsById = useMemo(
+    () =>
+      new Map<ID, AccountMeta>([
+        [LIQUID, { name: EFECTIVO_NAME, color: '#141414', kind: 'cash' }],
+        ...debitAccounts.map((d) => [d.id, { name: d.name, color: d.color, kind: 'debit' }] as const),
+        ...creditCards.map((c) => [c.id, { name: c.name, color: c.color, kind: 'credit' }] as const),
+      ]),
+    [debitAccounts, creditCards],
+  )
   const allWeeks = useMemo(() => eachWeekStart(horizon.start, horizon.end), [horizon])
 
   const weekMap = useMemo(() => {
@@ -126,7 +135,10 @@ export function PlanScreen() {
         name: data.name,
         amount: data.amount,
         categoryId: data.categoryId,
+        cashEligible: data.cashEligible,
+        debitEligible: data.debitEligible,
         creditEligible: data.creditEligible,
+        paidWith: data.paidWith,
         rule: data.recurrence,
       })
       return
@@ -154,8 +166,12 @@ export function PlanScreen() {
         weekStart: data.weekStart,
         date: data.date,
         categoryId: data.categoryId,
+        cashEligible: data.cashEligible,
+        debitEligible: data.debitEligible,
         creditEligible: data.creditEligible,
+        paidWith: data.paidWith,
         payCardId: data.payCardId,
+        cardBlock: data.cardBlock,
       })
     } else {
       await addMovement(data)
@@ -218,9 +234,9 @@ export function PlanScreen() {
               key={mv.id}
               mv={mv}
               balance={balById.get(mv.id)}
-              chargedToCardId={chargedById.get(mv.id)}
+              paidFrom={paidFromById.get(mv.id)}
               category={categories.find((c) => c.id === mv.categoryId)}
-              cardsById={cardsById}
+              accountsById={accountsById}
               readOnly={readOnly}
               onEdit={readOnly ? undefined : () => openEdit(mv)}
               onToggle={readOnly ? undefined : () => toggleIncluded(mv.id)}
@@ -346,6 +362,7 @@ export function PlanScreen() {
         weeks={editableWeeks}
         categories={categories}
         cards={creditCards}
+        debitAccounts={debitAccounts}
         onSubmit={handleSubmit}
         onDelete={deleteMovement}
         onDeleteFollowing={(mv) => void deleteSeriesFrom(mv)}
@@ -372,6 +389,15 @@ function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: 
       <div className="mt-2 text-sm text-paper/70">
         punto más bajo <Money cents={computed.minBalance} className="text-paper" />
       </div>
+      {computed.cashStates.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-paper/60">
+          {computed.cashStates.map((cs) => (
+            <span key={cs.id} className={cn(cs.blocked && 'line-through opacity-60')}>
+              {cs.name} <Money cents={cs.balance} className="text-paper/90" />
+            </span>
+          ))}
+        </div>
+      )}
       <div
         className={cn(
           'mt-3 inline-block rounded-full border-2 px-3 py-1 text-xs font-bold',
@@ -459,9 +485,9 @@ function CardStrip({
 interface RowProps {
   mv: Movement
   balance?: number
-  chargedToCardId?: ID
+  paidFrom?: ID
   category?: Category
-  cardsById: Map<ID, CreditCard>
+  accountsById: Map<ID, AccountMeta>
   readOnly?: boolean
   onEdit?: () => void
   onToggle?: () => void
@@ -485,9 +511,9 @@ function movementType(mv: Movement): keyof typeof TYPE_META {
 function MovementRow({
   mv,
   balance,
-  chargedToCardId,
+  paidFrom,
   category,
-  cardsById,
+  accountsById,
   readOnly,
   onEdit,
   onToggle,
@@ -496,10 +522,13 @@ function MovementRow({
   const isBlock = !!mv.cardBlock
   const Icon = isBlock ? (mv.cardBlock!.blocked ? Lock : Unlock) : meta.Icon
   const isAnchor = mv.kind === 'anchor'
-  const isCardAnchor = isAnchor && !!mv.accountId && mv.accountId !== LIQUID
-  const anchorCard = isCardAnchor ? cardsById.get(mv.accountId!) : undefined
-  const chargedCard = chargedToCardId ? cardsById.get(chargedToCardId) : undefined
-  const payCard = mv.payCardId ? cardsById.get(mv.payCardId) : undefined
+  const acctOf = (id?: ID) => (id ? accountsById.get(id) : undefined)
+  const anchorAcct = isAnchor && mv.accountId && mv.accountId !== LIQUID ? acctOf(mv.accountId) : undefined
+  const isCreditAnchor = anchorAcct?.kind === 'credit'
+  const blockAcct = isBlock ? acctOf(mv.cardBlock!.cardId) : undefined
+  const payAcct = mv.payCardId ? acctOf(mv.payCardId) : undefined
+  // de qué cuenta salió el gasto (si no fue efectivo)
+  const paidAcct = !isAnchor && !mv.payCardId && paidFrom && paidFrom !== LIQUID ? acctOf(paidFrom) : undefined
 
   return (
     <li
@@ -545,11 +574,13 @@ function MovementRow({
             {mv.source?.kind === 'recurrence' && (
               <Repeat size={11} className="text-muted" aria-label="recurrente" />
             )}
-            {isCardAnchor && (
-              <Tag color="bg-accent text-ink">saldo {anchorCard?.name ?? 'tarjeta'}</Tag>
+            {anchorAcct && <Tag color="bg-accent text-ink">saldo {anchorAcct.name}</Tag>}
+            {paidAcct && (
+              <Tag color={paidAcct.kind === 'credit' ? 'bg-cobalt text-white' : 'bg-ink text-paper'}>
+                {paidAcct.kind === 'credit' ? `→ crédito ${paidAcct.name}` : `→ ${paidAcct.name}`}
+              </Tag>
             )}
-            {chargedCard && <Tag color="bg-cobalt text-white">→ crédito {chargedCard.name}</Tag>}
-            {payCard && <Tag color="bg-ink text-paper">{payCard.name}</Tag>}
+            {payAcct && <Tag color="bg-ink text-paper">{payAcct.name}</Tag>}
           </span>
         </span>
         <span className="shrink-0 text-right">
@@ -560,7 +591,7 @@ function MovementRow({
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />
           )}
-          {!isCardAnchor && !isBlock && mv.included && balance != null && (
+          {!isCreditAnchor && !isBlock && mv.included && balance != null && (
             <Money cents={balance} className="block text-xs text-muted" />
           )}
         </span>

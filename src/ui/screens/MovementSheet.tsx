@@ -5,13 +5,14 @@ import type {
   Category,
   Cents,
   CreditCard,
+  DebitAccount,
   ID,
   ISODate,
   Movement,
   MovementKind,
   RecurrenceRule,
 } from '../../domain/types'
-import { LIQUID } from '../../domain/types'
+import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
 import { fromCents, toCents } from '../../domain/money'
 import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
@@ -26,7 +27,10 @@ export interface MovementSubmit {
   weekStart?: ISODate
   date?: ISODate
   categoryId?: ID
+  cashEligible?: boolean
+  debitEligible?: boolean
   creditEligible?: boolean
+  paidWith?: ID
   payCardId?: ID
   accountId?: ID
   cardBlock?: { cardId: ID; blocked: boolean }
@@ -42,12 +46,14 @@ interface Props {
   weeks: ISODate[]
   categories: Category[]
   cards: CreditCard[]
+  debitAccounts: DebitAccount[]
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
   onDeleteFollowing?: (movement: Movement) => void
 }
 
 const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
+const EFECTIVO_OPT = { id: LIQUID, name: EFECTIVO_NAME, color: '#141414' }
 
 function modeOf(m: Movement | null | undefined): SheetMode {
   if (!m) return 'gasto'
@@ -62,7 +68,7 @@ const LABELS: Record<SheetMode, string> = {
   ingreso: 'Ingreso',
   pago: 'Pago tarjeta',
   real: 'Saldo real',
-  bloqueo: 'Bloqueo',
+  bloqueo: 'Apagar/Prender',
 }
 const ACTIVE_CLS: Record<SheetMode, string> = {
   gasto: 'bg-neg text-white',
@@ -81,6 +87,7 @@ export function MovementSheet({
   weeks,
   categories,
   cards,
+  debitAccounts,
   onSubmit,
   onDelete,
   onDeleteFollowing,
@@ -91,12 +98,21 @@ export function MovementSheet({
   const [week, setWeek] = useState<ISODate>('')
   const [date, setDate] = useState<string>('')
   const [categoryId, setCategoryId] = useState<ID | undefined>(undefined)
+  const [cashEligible, setCashEligible] = useState(true)
+  const [debitEligible, setDebitEligible] = useState(true)
   const [creditEligible, setCreditEligible] = useState(false)
+  const [paidWith, setPaidWith] = useState<ID | undefined>(undefined)
   const [payCardId, setPayCardId] = useState<ID | undefined>(undefined)
   const [account, setAccount] = useState<ID>(LIQUID)
   const [blockOn, setBlockOn] = useState(true)
   const [repeat, setRepeat] = useState<RecurrencePreset>('once')
   const [deleteMode, setDeleteMode] = useState(false)
+
+  const cashAccounts = useMemo(() => [EFECTIVO_OPT, ...debitAccounts], [debitAccounts])
+  const allAccounts = useMemo(() => [...cashAccounts, ...cards], [cashAccounts, cards])
+  const blockTargets = useMemo(() => [...debitAccounts, ...cards], [debitAccounts, cards])
+  const nameOf = (id?: ID) => allAccounts.find((a) => a.id === id)?.name ?? EFECTIVO_NAME
+  const isCreditAccount = (id?: ID) => cards.some((c) => c.id === id)
 
   useEffect(() => {
     if (!open) return
@@ -107,8 +123,11 @@ export function MovementSheet({
     setWeek(m?.weekStart ?? (m?.date ? mondayOf(m.date) : (defaultWeek ?? weeks[0] ?? '')))
     setDate(m?.date ?? '')
     setCategoryId(m?.categoryId)
+    setCashEligible(m?.cashEligible ?? true)
+    setDebitEligible(m?.debitEligible ?? true)
     setCreditEligible(m?.creditEligible ?? false)
-    setPayCardId(m?.payCardId ?? m?.cardBlock?.cardId ?? cards[0]?.id)
+    setPaidWith(m?.paidWith)
+    setPayCardId(m?.payCardId ?? m?.cardBlock?.cardId ?? cards[0]?.id ?? blockTargets[0]?.id)
     setAccount(m?.accountId ?? LIQUID)
     setBlockOn(m?.cardBlock?.blocked ?? true)
     setRepeat('once')
@@ -126,13 +145,24 @@ export function MovementSheet({
     'ingreso',
     ...(cards.length ? (['pago'] as SheetMode[]) : []),
     'real',
-    ...(cards.length ? (['bloqueo'] as SheetMode[]) : []),
+    ...(blockTargets.length ? (['bloqueo'] as SheetMode[]) : []),
   ]
   const isReal = mode === 'real'
   const isPago = mode === 'pago'
   const isBloqueo = mode === 'bloqueo'
+  const isGasto = mode === 'gasto'
   const isRecurring = movement?.source?.kind === 'recurrence'
-  const cardName = (id?: ID) => cards.find((c) => c.id === id)?.name ?? 'tarjeta'
+  const hasOtherAccounts = debitAccounts.length > 0 || cards.length > 0
+
+  // cuentas donde el gasto PUEDE haberse pagado (para el override "lo pagué con")
+  const overrideOptions = useMemo(
+    () => [
+      ...(cashEligible ? [EFECTIVO_OPT] : []),
+      ...(debitEligible ? debitAccounts : []),
+      ...(creditEligible ? cards : []),
+    ],
+    [cashEligible, debitEligible, creditEligible, debitAccounts, cards],
+  )
 
   const canSave = isBloqueo
     ? !!payCardId
@@ -144,6 +174,12 @@ export function MovementSheet({
   function changeMode(next: SheetMode) {
     setMode(next)
     if (next === 'real') setDate('')
+    if (next === 'bloqueo' && !blockTargets.some((c) => c.id === payCardId)) {
+      setPayCardId(blockTargets[0]?.id)
+    }
+    if (next === 'pago' && !cards.some((c) => c.id === payCardId)) {
+      setPayCardId(cards[0]?.id)
+    }
   }
 
   function submit() {
@@ -152,7 +188,7 @@ export function MovementSheet({
     if (isBloqueo) {
       onSubmit({
         kind: 'delta',
-        name: `${blockOn ? 'Bloquear' : 'Reactivar'} ${cardName(payCardId)}`,
+        name: `${blockOn ? 'Apagar' : 'Prender'} ${nameOf(payCardId)}`,
         amount: 0,
         cardBlock: { cardId: payCardId as ID, blocked: blockOn },
         weekStart: wk,
@@ -161,7 +197,7 @@ export function MovementSheet({
     } else if (isReal) {
       onSubmit({
         kind: 'anchor',
-        name: name.trim() || (account === LIQUID ? 'Saldo real' : `Saldo ${cardName(account)}`),
+        name: name.trim() || nameOf(account),
         amount: toCents(Math.abs(Number(amount))),
         accountId: account,
         weekStart: week || undefined,
@@ -169,27 +205,53 @@ export function MovementSheet({
     } else if (isPago) {
       onSubmit({
         kind: 'delta',
-        name: name.trim() || `Pago ${cardName(payCardId)}`,
+        name: name.trim() || `Pago ${nameOf(payCardId)}`,
         amount: -toCents(Math.abs(Number(amount))),
         payCardId,
+        paidWith: paidWith && paidWith !== LIQUID ? paidWith : undefined,
         weekStart: wk,
         date: date || undefined,
       })
+    } else if (isGasto) {
+      const cents = toCents(Math.abs(Number(amount)))
+      const validOverride = paidWith && overrideOptions.some((o) => o.id === paidWith)
+      onSubmit({
+        kind: 'delta',
+        name: name.trim(),
+        amount: -cents,
+        weekStart: wk,
+        date: date || undefined,
+        categoryId,
+        cashEligible,
+        debitEligible,
+        creditEligible,
+        paidWith: validOverride ? paidWith : undefined,
+        recurrence: movement ? undefined : recurrenceFromPreset(repeat, date || week),
+      })
     } else {
+      // ingreso
       const cents = toCents(Math.abs(Number(amount)))
       onSubmit({
         kind: 'delta',
         name: name.trim(),
-        amount: mode === 'gasto' ? -cents : cents,
+        amount: cents,
         weekStart: wk,
         date: date || undefined,
         categoryId,
-        creditEligible: mode === 'gasto' ? creditEligible : undefined,
+        paidWith: paidWith && paidWith !== LIQUID ? paidWith : undefined,
         recurrence: movement ? undefined : recurrenceFromPreset(repeat, date || week),
       })
     }
     onOpenChange(false)
   }
+
+  const amountLabel = isReal
+    ? isCreditAccount(account)
+      ? `Deuda real de ${nameOf(account)}`
+      : `Saldo real de ${nameOf(account)}`
+    : isPago
+      ? 'Cuánto abonas'
+      : 'Monto'
 
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange} repositionInputs={false}>
@@ -198,7 +260,7 @@ export function MovementSheet({
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] max-w-md flex-col rounded-t-[22px] border-2 border-line bg-surface outline-none">
           <div className="mx-auto mt-2.5 h-1.5 w-12 shrink-0 rounded-full bg-fg/15" />
 
-          {/* header con acciones SIEMPRE accesibles (aunque salga el teclado) */}
+          {/* acciones SIEMPRE accesibles arriba (aunque salga el teclado) */}
           <div className="flex shrink-0 items-center justify-between gap-3 border-b-2 border-line/10 px-4 py-2">
             <button
               type="button"
@@ -221,7 +283,6 @@ export function MovementSheet({
           </div>
           <Drawer.Description className="sr-only">Formulario de movimiento</Drawer.Description>
 
-          {/* cuerpo con scroll propio */}
           <div className="flex-1 space-y-3.5 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">
             {isRecurring && (
               <div className="flex items-center gap-2 rounded-chunky border-2 border-line bg-fg/5 px-3 py-2 text-sm font-semibold">
@@ -247,8 +308,8 @@ export function MovementSheet({
             {isBloqueo ? (
               <>
                 <Chips
-                  label="¿Qué tarjeta?"
-                  options={cards}
+                  label="¿Qué cuenta apagas/prendes?"
+                  options={blockTargets}
                   value={payCardId}
                   onChange={setPayCardId}
                 />
@@ -260,7 +321,7 @@ export function MovementSheet({
                       blockOn ? 'bg-ink text-paper shadow-hard-sm' : 'bg-surface',
                     )}
                   >
-                    🔒 Bloquear
+                    🔒 Apagar
                   </button>
                   <button
                     onClick={() => setBlockOn(false)}
@@ -269,13 +330,13 @@ export function MovementSheet({
                       !blockOn ? 'bg-pos text-white shadow-hard-sm' : 'bg-surface',
                     )}
                   >
-                    🔓 Reactivar
+                    🔓 Prender
                   </button>
                 </div>
                 <p className="px-1 text-xs text-muted">
                   {blockOn
-                    ? 'A partir de esta semana no saldrá dinero de la tarjeta (sí podrás pagarla).'
-                    : 'A partir de esta semana la tarjeta vuelve a poder usarse.'}
+                    ? 'A partir de esta semana no saldrá dinero de esta cuenta (una tarjeta de crédito sí podrás pagarla).'
+                    : 'A partir de esta semana la cuenta vuelve a poder usarse.'}
                 </p>
                 <WeekDay
                   weeks={weeks}
@@ -293,23 +354,13 @@ export function MovementSheet({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={
-                      isReal ? 'Saldo real' : isPago ? `Pago ${cardName(payCardId)}` : 'Gasolina, Don René…'
+                      isReal ? nameOf(account) : isPago ? `Pago ${nameOf(payCardId)}` : 'Gasolina, Don René…'
                     }
                     className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
                   />
                 </Field>
 
-                <Field
-                  label={
-                    isReal
-                      ? account === LIQUID
-                        ? 'Saldo real líquido (tu dinero)'
-                        : `Deuda real de ${cardName(account)}`
-                      : isPago
-                        ? 'Cuánto abonas'
-                        : 'Monto'
-                  }
-                >
+                <Field label={amountLabel}>
                   <div className="flex items-center gap-1">
                     <span className="font-mono text-lg text-muted">$</span>
                     <input
@@ -325,17 +376,35 @@ export function MovementSheet({
                 {isReal && (
                   <Chips
                     label="¿De qué cuenta?"
-                    options={[{ id: LIQUID, name: 'Líquido', color: '#141414' }, ...cards]}
+                    options={allAccounts}
                     value={account}
                     onChange={setAccount}
                   />
                 )}
                 {isPago && (
+                  <>
+                    <Chips
+                      label="¿Qué tarjeta pagas?"
+                      options={cards}
+                      value={payCardId}
+                      onChange={setPayCardId}
+                    />
+                    {debitAccounts.length > 0 && (
+                      <Chips
+                        label="¿De qué cuenta sale el pago?"
+                        options={cashAccounts}
+                        value={paidWith ?? LIQUID}
+                        onChange={setPaidWith}
+                      />
+                    )}
+                  </>
+                )}
+                {mode === 'ingreso' && debitAccounts.length > 0 && (
                   <Chips
-                    label="¿Qué tarjeta pagas?"
-                    options={cards}
-                    value={payCardId}
-                    onChange={setPayCardId}
+                    label="¿A qué cuenta entró?"
+                    options={cashAccounts}
+                    value={paidWith ?? LIQUID}
+                    onChange={setPaidWith}
                   />
                 )}
 
@@ -369,26 +438,61 @@ export function MovementSheet({
                   />
                 )}
 
-                {mode === 'gasto' && cards.length > 0 && (
-                  <button
-                    onClick={() => setCreditEligible((v) => !v)}
-                    className="flex w-full items-center justify-between rounded-chunky border-2 border-line bg-surface px-3 py-2.5 text-left"
-                  >
-                    <span className="text-sm font-semibold">¿Pagable con tarjeta de crédito?</span>
-                    <span
-                      className={cn(
-                        'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
-                        creditEligible ? 'bg-accent' : 'bg-surface',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'h-4 w-4 rounded-full bg-ink transition-transform',
-                          creditEligible && 'translate-x-5',
-                        )}
-                      />
+                {isGasto && hasOtherAccounts && (
+                  <div className="space-y-2 rounded-chunky border-2 border-line bg-fg/5 p-2.5">
+                    <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                      ¿Con qué se puede pagar?
                     </span>
-                  </button>
+                    <Toggle label="Efectivo" on={cashEligible} onToggle={() => setCashEligible((v) => !v)} />
+                    {debitAccounts.length > 0 && (
+                      <Toggle
+                        label="Tarjeta de débito"
+                        on={debitEligible}
+                        onToggle={() => setDebitEligible((v) => !v)}
+                      />
+                    )}
+                    {cards.length > 0 && (
+                      <Toggle
+                        label="Tarjeta de crédito"
+                        on={creditEligible}
+                        onToggle={() => setCreditEligible((v) => !v)}
+                      />
+                    )}
+                    {overrideOptions.length > 1 && (
+                      <div className="pt-1">
+                        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                          Lo pagué con (opcional)
+                        </span>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setPaidWith(undefined)}
+                            className={cn(
+                              'rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
+                              !paidWith ? 'bg-ink text-paper' : 'bg-surface',
+                            )}
+                          >
+                            Auto
+                          </button>
+                          {overrideOptions.map((o) => (
+                            <button
+                              key={o.id}
+                              onClick={() => setPaidWith(o.id)}
+                              className={cn(
+                                'flex items-center gap-1.5 rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
+                                paidWith === o.id ? 'bg-ink text-paper' : 'bg-surface',
+                              )}
+                            >
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ background: o.color }}
+                              />
+                              {o.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {(mode === 'gasto' || mode === 'ingreso') && categories.length > 0 && (
@@ -427,7 +531,6 @@ export function MovementSheet({
               </>
             )}
 
-            {/* borrar (solo al editar) */}
             {movement &&
               onDelete &&
               (deleteMode ? (
@@ -476,6 +579,27 @@ export function MovementSheet({
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
+  )
+}
+
+function Toggle({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex w-full items-center justify-between rounded-chunky border-2 border-line bg-surface px-3 py-2 text-left"
+    >
+      <span className="text-sm font-semibold">{label}</span>
+      <span
+        className={cn(
+          'flex h-6 w-11 items-center rounded-full border-2 border-ink p-0.5 transition-colors',
+          on ? 'bg-accent' : 'bg-surface',
+        )}
+      >
+        <span
+          className={cn('h-4 w-4 rounded-full bg-ink transition-transform', on && 'translate-x-5')}
+        />
+      </span>
+    </button>
   )
 }
 

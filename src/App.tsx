@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePlanStore } from './state/planStore'
 import { useUiStore } from './state/uiStore'
 import { PlanScreen } from './ui/screens/PlanScreen'
-import { EscenariosScreen } from './ui/screens/EscenariosScreen'
+import { CuentasScreen } from './ui/screens/CuentasScreen'
 import { CategoriasScreen } from './ui/screens/CategoriasScreen'
 import { LockScreen } from './ui/screens/LockScreen'
 
@@ -14,11 +14,11 @@ const AjustesScreen = lazy(() =>
   import('./ui/screens/AjustesScreen').then((m) => ({ default: m.AjustesScreen })),
 )
 
-type Tab = 'plan' | 'escenarios' | 'graficas' | 'catalogos' | 'ajustes'
+type Tab = 'plan' | 'cuentas' | 'graficas' | 'catalogos' | 'ajustes'
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'plan', label: 'Plan', glyph: '▤' },
-  { id: 'escenarios', label: 'Escenarios', glyph: '⧉' },
+  { id: 'cuentas', label: 'Cuentas', glyph: '▦' },
   { id: 'graficas', label: 'Gráficas', glyph: '◔' },
   { id: 'catalogos', label: 'Categorías', glyph: '☰' },
   { id: 'ajustes', label: 'Ajustes', glyph: '⚙' },
@@ -60,8 +60,8 @@ export default function App() {
           <Suspense fallback={<Loading />}>
             <ChartsScreen />
           </Suspense>
-        ) : tab === 'escenarios' ? (
-          <EscenariosScreen />
+        ) : tab === 'cuentas' ? (
+          <CuentasScreen />
         ) : tab === 'catalogos' ? (
           <CategoriasScreen />
         ) : tab === 'ajustes' ? (
