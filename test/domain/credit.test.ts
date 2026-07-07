@@ -3,12 +3,12 @@ import { computeLedger } from '../../src/domain/ledger'
 import { buildComputedScenario } from '../../src/domain/plan'
 import type { CreditCard, Movement } from '../../src/domain/types'
 
-const card = (id: string, limit: number): CreditCard => ({
+const card = (id: string, limit: number, position = 0): CreditCard => ({
   id,
   name: id,
   limit,
   color: '#000',
-  position: 0,
+  position,
 })
 
 let order = 0
@@ -69,17 +69,28 @@ describe('enrutado débito/crédito', () => {
     expect(last.cardDebtAfter['visa']).toBe(100000) // 150000 - 50000 (regresó crédito)
   })
 
-  it('elige la tarjeta con MÁS crédito disponible', () => {
+  it('elige la primera tarjeta de la jerarquía que alcance (no la de más crédito)', () => {
     const pts = computeLedger(
       [
         mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
         mv({ name: 'compra', amount: -50000, creditEligible: true }),
       ],
-      [card('a', 100000), card('b', 300000)],
+      [card('a', 100000, 0), card('b', 300000, 1)],
     )
-    expect(pts[1].chargedToCardId).toBe('b')
-    expect(pts[1].cardDebtAfter['b']).toBe(50000)
-    expect(pts[1].cardDebtAfter['a']).toBe(0)
+    expect(pts[1].chargedToCardId).toBe('a') // 'a' va primero en la jerarquía y alcanza
+    expect(pts[1].cardDebtAfter['a']).toBe(50000)
+    expect(pts[1].cardDebtAfter['b']).toBe(0)
+  })
+
+  it('si la primera tarjeta no alcanza, pasa a la siguiente de la jerarquía', () => {
+    const pts = computeLedger(
+      [
+        mv({ name: 'inicio', kind: 'anchor', amount: 0 }),
+        mv({ name: 'compra', amount: -50000, creditEligible: true }),
+      ],
+      [card('chica', 30000, 0), card('grande', 300000, 1)],
+    )
+    expect(pts[1].chargedToCardId).toBe('grande') // 'chica' no cubre 50000 → siguiente
   })
 
   it('un anchor de tarjeta fija su deuda real sin tocar el líquido', () => {

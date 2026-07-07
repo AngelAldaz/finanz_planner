@@ -49,8 +49,17 @@ export interface CreditCard {
   position: number
 }
 
-/** accountId del líquido (débito/efectivo). Las tarjetas usan su propio id. */
+/** Tarjeta de débito / cuenta de banco: liquidez con saldo propio (sin límite). */
+export interface DebitAccount {
+  id: ID
+  name: string
+  color: string
+  position: number // jerarquía de prioridad entre débitos
+}
+
+/** id del efectivo (la cuenta de liquidez base, siempre presente). */
 export const LIQUID = 'liquid'
+export const EFECTIVO_NAME = 'Efectivo'
 
 export interface Plan {
   id: ID
@@ -88,8 +97,12 @@ export interface Movement {
   date?: ISODate // OPCIONAL: si la pones, cae sola en su semana
   weekStart?: ISODate // colocación por semana sin fecha (lunes)
   categoryId?: ID
-  creditEligible?: boolean // gasto que PUEDE pagarse con crédito (si el líquido no alcanza)
-  accountId?: ID // para anchor: 'liquid' (default) o un cardId (saldo real de la tarjeta)
+  // ¿con qué se puede pagar este gasto? (default: efectivo y débito sí, crédito no)
+  cashEligible?: boolean // ¿pagable con efectivo? (default true)
+  debitEligible?: boolean // ¿pagable con tarjeta de débito? (default true)
+  creditEligible?: boolean // ¿pagable con crédito? (default false)
+  paidWith?: ID // cuenta usada para este delta: destino (ingreso) · origen (pago) · con qué se pagó (gasto: override manual)
+  accountId?: ID // para anchor: 'liquid' (default), un débito o un cardId (saldo real de esa cuenta)
   payCardId?: ID // delta que abona a esta tarjeta (pago → regresa crédito disponible)
   cardBlock?: { cardId: ID; blocked: boolean } // evento: apaga/enciende una tarjeta a partir de aquí
   included: boolean // prender/apagar sin borrar
@@ -116,12 +129,14 @@ export interface Horizon {
 // ---------- view-models (NUNCA se persisten) ----------
 export interface LedgerPoint {
   movement: Movement
-  balanceBefore: Cents // líquido antes
-  balanceAfter: Cents // líquido después
+  balanceBefore: Cents // líquido TOTAL antes (efectivo + débitos)
+  balanceAfter: Cents // líquido TOTAL después
   isAnchor: boolean
-  chargedToCardId?: ID // si el gasto se pagó con crédito (el líquido no cambió)
+  paidFrom?: ID // cuenta que efectivamente pagó el gasto (o a la que entró el ingreso)
+  chargedToCardId?: ID // si el gasto se pagó con crédito (paidFrom es una TDC; el líquido no cambió)
+  cashAfter: Record<ID, Cents> // saldo por cuenta de liquidez (efectivo + cada débito) tras este punto
   cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto
-  cardBlockedAfter: Record<ID, boolean> // estado encendida/apagada por tarjeta tras este punto
+  cardBlockedAfter: Record<ID, boolean> // estado encendida/apagada por cuenta (débito y crédito) tras este punto
 }
 
 export interface WeekKey {
@@ -141,6 +156,7 @@ export interface WeekSummary {
   lowestAt?: ISODate
   hadAnchor: boolean
   goesNegative: boolean
+  cashClosing: Record<ID, Cents> // saldo de liquidez por cuenta al cierre de la semana
   cardDebtClosing: Record<ID, Cents> // deuda por tarjeta al cierre de la semana
 }
 
@@ -149,6 +165,15 @@ export interface CardState {
   debt: Cents
   available: Cents
   blocked: boolean // estado proyectado al final del horizonte
+}
+
+/** Saldo proyectado de una cuenta de liquidez (efectivo o débito). */
+export interface CashState {
+  id: ID
+  name: string
+  kind: 'cash' | 'debit'
+  balance: Cents
+  blocked: boolean // solo aplica a débitos
 }
 
 export interface ComputedScenario {
@@ -161,6 +186,7 @@ export interface ComputedScenario {
   firstNegativeWeek?: WeekKey
   firstNegativeAt?: ISODate
   cardStates: CardState[]
+  cashStates: CashState[] // efectivo + débitos, con su saldo final
 }
 
 export interface ScenarioComparison {
@@ -186,4 +212,5 @@ export interface BackupBundle {
   categories: Category[]
   catalogItems: CatalogItem[]
   creditCards: CreditCard[]
+  debitAccounts?: DebitAccount[]
 }
