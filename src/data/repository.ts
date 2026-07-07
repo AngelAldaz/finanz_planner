@@ -6,6 +6,7 @@ import type {
   CatalogKind,
   Category,
   CreditCard,
+  DebitAccount,
   ID,
   Movement,
   Plan,
@@ -55,6 +56,11 @@ export interface PlanRepository {
   listCreditCards(): Promise<CreditCard[]>
   putCreditCard(c: CreditCard): Promise<void>
   deleteCreditCard(id: ID): Promise<void>
+
+  // debit accounts (efectivo + débitos son liquidez; el efectivo es sintético)
+  listDebitAccounts(): Promise<DebitAccount[]>
+  putDebitAccount(a: DebitAccount): Promise<void>
+  deleteDebitAccount(id: ID): Promise<void>
 
   // bulk / sync seam
   isEmpty(): Promise<boolean>

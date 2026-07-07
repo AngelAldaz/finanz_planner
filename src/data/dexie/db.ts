@@ -3,6 +3,7 @@ import type {
   CatalogItem,
   Category,
   CreditCard,
+  DebitAccount,
   Movement,
   Plan,
   Scenario,
@@ -17,6 +18,7 @@ export class FinanzDB extends Dexie {
   categories!: Table<Category, string>
   catalogItems!: Table<CatalogItem, string>
   creditCards!: Table<CreditCard, string>
+  debitAccounts!: Table<DebitAccount, string>
 
   constructor(name = 'finanz') {
     super(name)
@@ -30,6 +32,9 @@ export class FinanzDB extends Dexie {
     })
     this.version(2).stores({
       creditCards: 'id, position',
+    })
+    this.version(3).stores({
+      debitAccounts: 'id, position',
     })
   }
 }

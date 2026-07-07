@@ -5,6 +5,7 @@ import type {
   CatalogKind,
   Category,
   CreditCard,
+  DebitAccount,
   ID,
   Movement,
   Plan,
@@ -159,12 +160,23 @@ export class DexiePlanRepository implements PlanRepository {
     await this.db.creditCards.delete(id)
   }
 
+  // ----- debit accounts -----
+  listDebitAccounts() {
+    return this.db.debitAccounts.orderBy('position').toArray()
+  }
+  async putDebitAccount(a: DebitAccount) {
+    await this.db.debitAccounts.put(a)
+  }
+  async deleteDebitAccount(id: ID) {
+    await this.db.debitAccounts.delete(id)
+  }
+
   // ----- bulk / sync seam -----
   async isEmpty() {
     return (await this.db.plans.count()) === 0
   }
   async exportAll(): Promise<BackupBundle> {
-    const [plans, scenarios, movements, recurrences, categories, catalogItems, creditCards] =
+    const [plans, scenarios, movements, recurrences, categories, catalogItems, creditCards, debitAccounts] =
       await Promise.all([
         this.db.plans.toArray(),
         this.db.scenarios.toArray(),
@@ -173,6 +185,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.categories.toArray(),
         this.db.catalogItems.toArray(),
         this.db.creditCards.toArray(),
+        this.db.debitAccounts.toArray(),
       ])
     return {
       version: 1,
@@ -183,6 +196,7 @@ export class DexiePlanRepository implements PlanRepository {
       categories,
       catalogItems,
       creditCards,
+      debitAccounts,
     }
   }
   async importAll(bundle: BackupBundle) {
@@ -195,6 +209,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.categories.clear(),
         this.db.catalogItems.clear(),
         this.db.creditCards.clear(),
+        this.db.debitAccounts.clear(),
       ])
       await Promise.all([
         this.db.plans.bulkPut(bundle.plans),
@@ -204,6 +219,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.categories.bulkPut(bundle.categories),
         this.db.catalogItems.bulkPut(bundle.catalogItems),
         this.db.creditCards.bulkPut(bundle.creditCards ?? []),
+        this.db.debitAccounts.bulkPut(bundle.debitAccounts ?? []),
       ])
     })
   }
