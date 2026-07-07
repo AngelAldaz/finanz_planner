@@ -12,6 +12,8 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // inyecta nuestros handlers de push/click en el SW generado por Workbox
+      workbox: { importScripts: ['push-sw.js'] },
       manifest: {
         name: 'Finanz — flujo de efectivo',
         short_name: 'Finanz',

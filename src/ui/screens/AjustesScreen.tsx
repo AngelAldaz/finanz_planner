@@ -1,10 +1,19 @@
-import { useState, type ReactNode } from 'react'
-import { Cloud, Download, LogOut, RefreshCw, Upload } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Bell, Cloud, Download, LogOut, RefreshCw, Upload } from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useUiStore } from '../../state/uiStore'
 import { useCloudStore } from '../../state/cloudStore'
 import { repository } from '../../data'
 import { fromCents, toCents } from '../../domain/money'
+import {
+  currentPushStatus,
+  disablePush,
+  enablePush,
+  isStandalone,
+  pushConfigured,
+  pushSupported,
+  updateNotifyHour,
+} from '../../data/supabase/push'
 import { hasPin, removePin, setPin } from '../../lib/pin'
 import type { ThemePref } from '../../lib/theme'
 import { cn } from '../../lib/cn'
@@ -68,6 +77,8 @@ export function AjustesScreen() {
   return (
     <div className="space-y-5 pb-28">
       <CloudSection />
+
+      <NotificationsSection />
 
       <Card title="Apariencia">
         <div className="grid grid-cols-3 gap-2">
@@ -314,6 +325,108 @@ function CloudSection() {
           <LogOut size={15} />
         </button>
       </div>
+    </Card>
+  )
+}
+
+function NotificationsSection() {
+  const email = useCloudStore((s) => s.email)
+  const [status, setStatus] = useState<'on' | 'off' | 'loading'>('loading')
+  const [hour, setHour] = useState(9)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!pushConfigured || !pushSupported()) {
+      setStatus('off')
+      return
+    }
+    void currentPushStatus().then(setStatus)
+  }, [])
+
+  if (!pushConfigured) {
+    return (
+      <Card title="Notificaciones">
+        <p className="text-sm text-muted">
+          Para recibir avisos de gastos en tu iPhone (un día antes y el mismo día), configura las
+          llaves VAPID y despliega la función de nube. Pasos en{' '}
+          <span className="font-semibold">NOTIFICATIONS.md</span>.
+        </p>
+      </Card>
+    )
+  }
+  if (!email) {
+    return (
+      <Card title="Notificaciones">
+        <p className="text-sm text-muted">
+          Inicia sesión en la nube (arriba) para activar las notificaciones.
+        </p>
+      </Card>
+    )
+  }
+  if (!pushSupported() || !isStandalone()) {
+    return (
+      <Card title="Notificaciones">
+        <p className="text-sm text-muted">
+          Instala la app en tu pantalla de inicio (Compartir → «Agregar a inicio») y ábrela desde ahí
+          para poder activar las notificaciones. iOS solo las permite en apps instaladas.
+        </p>
+      </Card>
+    )
+  }
+
+  async function toggle() {
+    setBusy(true)
+    setErr(null)
+    try {
+      if (status === 'on') {
+        await disablePush()
+        setStatus('off')
+      } else {
+        await enablePush(hour)
+        setStatus('on')
+      }
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title="Notificaciones de gastos">
+      <p className="text-sm text-muted">
+        Te aviso <b>un día antes</b> y <b>el mismo día</b> de tus gastos con fecha, aunque la app esté
+        cerrada.
+      </p>
+      {err && <p className="px-1 text-sm font-semibold text-neg">{err}</p>}
+      <Field label="Hora del aviso">
+        <select
+          value={hour}
+          onChange={(e) => {
+            const h = Number(e.target.value)
+            setHour(h)
+            if (status === 'on') void updateNotifyHour(h)
+          }}
+          className="w-full bg-transparent text-base outline-none"
+        >
+          {Array.from({ length: 24 }, (_, h) => (
+            <option key={h} value={h}>
+              {String(h).padStart(2, '0')}:00
+            </option>
+          ))}
+        </select>
+      </Field>
+      <button
+        onClick={() => void toggle()}
+        disabled={busy || status === 'loading'}
+        className={cn(
+          'flex w-full items-center justify-center gap-2 rounded-chunky border-2 border-line py-2.5 text-sm font-bold active:translate-y-0.5 disabled:opacity-50',
+          status === 'on' ? 'bg-surface text-neg' : 'bg-accent text-ink shadow-hard-sm',
+        )}
+      >
+        <Bell size={16} /> {status === 'on' ? 'Desactivar notificaciones' : 'Activar notificaciones'}
+      </button>
     </Card>
   )
 }
