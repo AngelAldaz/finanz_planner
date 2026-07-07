@@ -8,6 +8,7 @@ import type {
   Horizon,
   ID,
   ISODate,
+  LedgerPoint,
   Movement,
   ScenarioRecurrence,
 } from './types'
@@ -23,10 +24,11 @@ export interface ScenarioInput {
   cards?: CreditCard[]
   debitAccounts?: DebitAccount[]
   horizon: Horizon
+  today?: ISODate // para los saldos "a día de hoy" (default: estado final)
 }
 
 export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
-  const { movements, recurrences = [], cards = [], debitAccounts = [], horizon } = input
+  const { movements, recurrences = [], cards = [], debitAccounts = [], horizon, today } = input
 
   // las instancias generadas que el usuario ya editó (mismo occurrenceKey) ceden ante las manuales
   const manualKeys = new Set(
@@ -57,23 +59,39 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     firstNegativeAt = p ? effectiveDate(p.movement) : undefined
   }
 
-  const last = points.length ? points[points.length - 1] : undefined
-  const cardStates: CardState[] = cards.map((c) => {
-    const debt = last?.cardDebtAfter[c.id] ?? 0
-    return { card: c, debt, available: c.limit - debt, blocked: last?.cardBlockedAfter[c.id] ?? false }
-  })
-
   const orderedDebits = [...debitAccounts].sort((a, b) => a.position - b.position)
-  const cashStates: CashState[] = [
-    { id: LIQUID, name: EFECTIVO_NAME, kind: 'cash', balance: last?.cashAfter[LIQUID] ?? 0, blocked: false },
-    ...orderedDebits.map((d) => ({
-      id: d.id,
-      name: d.name,
-      kind: 'debit' as const,
-      balance: last?.cashAfter[d.id] ?? 0,
-      blocked: last?.cardBlockedAfter[d.id] ?? false,
-    })),
-  ]
+  const statesAt = (snap: LedgerPoint | undefined) => {
+    const cardStates: CardState[] = cards.map((c) => {
+      const debt = snap?.cardDebtAfter[c.id] ?? 0
+      return { card: c, debt, available: c.limit - debt, blocked: snap?.cardBlockedAfter[c.id] ?? false }
+    })
+    const cashStates: CashState[] = [
+      { id: LIQUID, name: EFECTIVO_NAME, kind: 'cash', balance: snap?.cashAfter[LIQUID] ?? 0, blocked: false },
+      ...orderedDebits.map((d) => ({
+        id: d.id,
+        name: d.name,
+        kind: 'debit' as const,
+        balance: snap?.cashAfter[d.id] ?? 0,
+        blocked: snap?.cardBlockedAfter[d.id] ?? false,
+      })),
+    ]
+    return { cardStates, cashStates }
+  }
+
+  const last = points.length ? points[points.length - 1] : undefined
+  const final = statesAt(last)
+
+  // snapshot "a día de hoy": el último punto cuya fecha efectiva es <= hoy (los puntos van en orden)
+  let todaySnap: LedgerPoint | undefined
+  if (today) {
+    for (const p of points) {
+      if (effectiveDate(p.movement) <= today) todaySnap = p
+      else break
+    }
+  } else {
+    todaySnap = last
+  }
+  const todayStates = statesAt(todaySnap)
 
   return {
     scenarioId: input.scenarioId ?? '',
@@ -84,7 +102,9 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     minBalanceAt,
     firstNegativeWeek: firstNeg?.key,
     firstNegativeAt,
-    cardStates,
-    cashStates,
+    cardStates: final.cardStates,
+    cashStates: final.cashStates,
+    cardStatesToday: todayStates.cardStates,
+    cashStatesToday: todayStates.cashStates,
   }
 }

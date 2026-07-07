@@ -68,7 +68,7 @@ export function PlanScreen() {
 
   const computed = useComputed()
   const cashStateById = useMemo(
-    () => new Map(computed.cashStates.map((c) => [c.id, c])),
+    () => new Map(computed.cashStatesToday.map((c) => [c.id, c])),
     [computed],
   )
   // saldo corriente del POOL que tocó cada movimiento (efectivo o suma de débitos), sin combinar
@@ -376,7 +376,7 @@ export function PlanScreen() {
       />
 
       <CardStrip
-        cards={computed.cardStates}
+        cards={computed.cardStatesToday}
         onAdd={() => {
           setEditingCard(null)
           setCardSheetOpen(true)

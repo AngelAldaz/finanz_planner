@@ -188,8 +188,10 @@ export interface ComputedScenario {
   minBalanceAt?: ISODate
   firstNegativeWeek?: WeekKey
   firstNegativeAt?: ISODate
-  cardStates: CardState[]
-  cashStates: CashState[] // efectivo + débitos, con su saldo final
+  cardStates: CardState[] // proyectados al final del horizonte
+  cashStates: CashState[] // efectivo + débitos, saldo final proyectado
+  cardStatesToday: CardState[] // a día de hoy (movimientos con fecha ≤ hoy)
+  cashStatesToday: CashState[] // a día de hoy
 }
 
 export interface ScenarioComparison {

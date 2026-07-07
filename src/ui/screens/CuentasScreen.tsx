@@ -22,9 +22,9 @@ export function CuentasScreen() {
   const moveCard = usePlanStore((s) => s.moveCard)
 
   const computed = useComputed()
-  const cashById = useMemo(() => new Map(computed.cashStates.map((c) => [c.id, c])), [computed])
+  const cashById = useMemo(() => new Map(computed.cashStatesToday.map((c) => [c.id, c])), [computed])
   const cardStateById = useMemo(
-    () => new Map(computed.cardStates.map((c) => [c.card.id, c])),
+    () => new Map(computed.cardStatesToday.map((c) => [c.card.id, c])),
     [computed],
   )
   const efectivo = cashById.get(LIQUID)

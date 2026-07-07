@@ -10,9 +10,11 @@ export function useComputed(): ComputedScenario {
   const debitAccounts = usePlanStore((s) => s.debitAccounts)
   const horizon = usePlanStore((s) => s.horizon)
   const scenarioId = usePlanStore((s) => s.activeScenarioId)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   // las recurrencias ya están MATERIALIZADas como movimientos → no se expanden en vivo aquí
   return useMemo(
-    () => buildComputedScenario({ scenarioId, movements, cards, debitAccounts, horizon }),
-    [scenarioId, movements, cards, debitAccounts, horizon],
+    () => buildComputedScenario({ scenarioId, movements, cards, debitAccounts, horizon, today }),
+    [scenarioId, movements, cards, debitAccounts, horizon, today],
   )
 }
