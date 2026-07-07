@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expandRecurrence, recurrenceFromPreset } from '../../src/domain/recurrence'
+import { expandRecurrence, inferRuleFromDates, recurrenceFromPreset } from '../../src/domain/recurrence'
 import type { Horizon, RecurrenceRule, ScenarioRecurrence } from '../../src/domain/types'
 
 const horizon: Horizon = { start: '2026-06-01', end: '2026-07-31' }
@@ -96,5 +96,35 @@ describe('recurrenceFromPreset', () => {
   })
   it('once no genera regla', () => {
     expect(recurrenceFromPreset('once', '2026-06-01')).toBeUndefined()
+  })
+})
+
+describe('inferRuleFromDates (reparar/extender series)', () => {
+  it('semanal → cada 7 días, reproduce las mismas fechas y extiende', () => {
+    const dates = ['2026-06-05', '2026-06-12', '2026-06-19']
+    const rule = inferRuleFromDates(dates)
+    expect(rule).toEqual({ startDate: '2026-06-05', every: { n: 7, unit: 'day' } })
+    const rec: ScenarioRecurrence = { id: 'r', scenarioId: 's', name: 'X', amount: 100, rule: rule!, included: true }
+    const out = expandRecurrence(rec, { start: '2026-06-05', end: '2026-07-03' }).map((m) => m.date)
+    expect(out).toEqual(['2026-06-05', '2026-06-12', '2026-06-19', '2026-06-26', '2026-07-03'])
+  })
+
+  it('quincenal → cada 14 días', () => {
+    expect(inferRuleFromDates(['2026-06-01', '2026-06-15', '2026-06-29'])).toEqual({
+      startDate: '2026-06-01',
+      every: { n: 14, unit: 'day' },
+    })
+  })
+
+  it('mensual (mismo día del mes) → daysOfMonth', () => {
+    expect(inferRuleFromDates(['2026-06-10', '2026-07-10', '2026-08-10'])).toEqual({
+      startDate: '2026-06-10',
+      daysOfMonth: [10],
+    })
+  })
+
+  it('sin patrón claro → null', () => {
+    expect(inferRuleFromDates(['2026-06-01', '2026-06-08', '2026-06-30'])).toBeNull()
+    expect(inferRuleFromDates(['2026-06-01'])).toBeNull()
   })
 })

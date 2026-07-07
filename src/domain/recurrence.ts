@@ -124,6 +124,30 @@ export function expandAllRecurrences(recs: ScenarioRecurrence[], horizon: Horizo
   return recs.flatMap((r) => expandRecurrence(r, horizon))
 }
 
+function daysBetween(a: ISODate, b: ISODate): number {
+  const x = parseISO(a)
+  const y = parseISO(b)
+  return Math.round((Date.UTC(y.y, y.m - 1, y.d) - Date.UTC(x.y, x.m - 1, x.d)) / 86400000)
+}
+
+/** Infiere una regla simple (cada-N-días o mismo día del mes) a partir de fechas ya generadas.
+ *  Sirve para EXTENDER series materializadas cuya regla no se guardó. Devuelve null si no es clara. */
+export function inferRuleFromDates(dates: ISODate[]): RecurrenceRule | null {
+  const ds = [...dates].filter(Boolean).sort(compareISO)
+  if (ds.length < 2) return null
+  const gaps: number[] = []
+  for (let i = 1; i < ds.length; i++) gaps.push(daysBetween(ds[i - 1], ds[i]))
+  const g = gaps[0]
+  if (g >= 1 && g <= 45 && gaps.every((x) => x === g)) {
+    return { startDate: ds[0], every: { n: g, unit: 'day' } }
+  }
+  const doms = ds.map((d) => parseISO(d).d)
+  if (doms.every((x) => x === doms[0])) {
+    return { startDate: ds[0], daysOfMonth: [doms[0]] }
+  }
+  return null
+}
+
 export type RecurrencePreset =
   | 'once'
   | 'weekly'

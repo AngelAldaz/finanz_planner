@@ -52,7 +52,28 @@ export function duplicateScenarioData(
     createdAt: now,
     updatedAt: now,
   }
-  const movements = src.movements.map((m) => ({ ...m, id: newId(), scenarioId: id }))
-  const recurrences = src.recurrences.map((r) => ({ ...r, id: newId(), scenarioId: id }))
+  // remapea los ids de las reglas para no romper el vínculo movimiento↔recurrencia
+  const ruleIdMap = new Map<ID, ID>()
+  const recurrences = src.recurrences.map((r) => {
+    const nid = newId()
+    ruleIdMap.set(r.id, nid)
+    return { ...r, id: nid, scenarioId: id }
+  })
+  const movements = src.movements.map((m) => {
+    let source = m.source
+    if (source?.ruleId && ruleIdMap.has(source.ruleId)) {
+      const nrid = ruleIdMap.get(source.ruleId)!
+      const at = source.occurrenceKey?.indexOf('@') ?? -1
+      source = {
+        ...source,
+        ruleId: nrid,
+        occurrenceKey:
+          source.occurrenceKey && at >= 0
+            ? `${nrid}${source.occurrenceKey.slice(at)}`
+            : source.occurrenceKey,
+      }
+    }
+    return { ...m, id: newId(), scenarioId: id, source }
+  })
   return { scenario, movements, recurrences }
 }
