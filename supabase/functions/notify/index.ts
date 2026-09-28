@@ -61,24 +61,46 @@ Deno.serve(async (req) => {
   if (CRON_SECRET && req.headers.get('x-cron-secret') !== CRON_SECRET) {
     return new Response('forbidden', { status: 403 })
   }
+  // { force: true } en el body → ignora la hora de aviso (para probar a mano con curl)
+  let force = false
+  try {
+    const body = await req.json()
+    force = body?.force === true
+  } catch {
+    /* sin body o no-JSON: normal cuando lo llama el cron */
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
   const { data: subs, error } = await supabase.from('push_subscriptions').select('*')
-  if (error) return new Response(error.message, { status: 500 })
+  if (error) {
+    console.error('push_subscriptions:', error.message)
+    return new Response(error.message, { status: 500 })
+  }
 
-  let sent = 0
+  const stats = { subs: subs?.length ?? 0, matched: 0, sent: 0, errors: 0, removed: 0 }
+  const log: string[] = []
   for (const sub of subs ?? []) {
     const tz = sub.timezone || 'America/Mexico_City'
     const { date: today, hour } = localParts(tz)
-    if (hour !== (sub.notify_hour ?? 9)) continue
+    const short = String(sub.endpoint).slice(-12)
+    if (!force && hour !== (sub.notify_hour ?? 9)) {
+      log.push(`…${short}: hora local ${hour} ≠ aviso ${sub.notify_hour ?? 9} (${tz}), skip`)
+      continue
+    }
+    stats.matched++
     const tomorrow = addDaysISO(today, 1)
 
-    const { data: snapRow } = await supabase
+    const { data: snapRow, error: snapErr } = await supabase
       .from('snapshots')
       .select('data')
       .eq('user_id', sub.user_id)
       .maybeSingle()
+    if (snapErr) log.push(`…${short}: snapshot error ${snapErr.message}`)
     const bundle: any = snapRow?.data
-    if (!bundle) continue
+    if (!bundle) {
+      log.push(`…${short}: sin snapshot para user ${sub.user_id}`)
+      continue
+    }
 
     const scenarios = (bundle.scenarios ?? [])
       .slice()
@@ -94,6 +116,9 @@ Deno.serve(async (req) => {
     )
     const dueToday = gastos.filter((m: any) => m.date === today)
     const dueTomorrow = gastos.filter((m: any) => m.date === tomorrow)
+    log.push(
+      `…${short}: ${today} (${tz}) · movs=${(bundle.movements ?? []).length} gastos-con-fecha=${gastos.length} hoy=${dueToday.length} mañana=${dueTomorrow.length}`,
+    )
 
     const notifications: { title: string; body: string; tag: string }[] = []
     if (dueToday.length)
@@ -108,16 +133,24 @@ Deno.serve(async (req) => {
     for (const n of notifications) {
       try {
         await webpush.sendNotification(sub.subscription, JSON.stringify({ ...n, url: '.' }))
-        sent++
+        stats.sent++
+        log.push(`…${short}: enviada "${n.title}"`)
       } catch (e: any) {
+        stats.errors++
+        const code = e?.statusCode
+        log.push(
+          `…${short}: ERROR ${code ?? '?'} ${String(e?.body ?? e?.message ?? e).slice(0, 200)}`,
+        )
         // 404/410 → la suscripción ya no existe: bórrala
-        if (e?.statusCode === 404 || e?.statusCode === 410) {
+        if (code === 404 || code === 410) {
           await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+          stats.removed++
         }
       }
     }
   }
-  return new Response(JSON.stringify({ sent }), {
+  for (const line of log) console.log(line)
+  return new Response(JSON.stringify({ ...stats, force, log }), {
     headers: { 'Content-Type': 'application/json' },
   })
 })
