@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { cloudConfigured, supabase } from '../data/supabase/client'
 import { pullSnapshot, pushSnapshot } from '../data/supabase/cloud'
+import { refreshPush } from '../data/supabase/push'
 import { repository } from '../data'
 import { usePlanStore } from './planStore'
 
@@ -75,12 +76,16 @@ export const useCloudStore = create<CloudState>((set, get) => ({
       if (data.user) {
         set({ email: data.user.email ?? null })
         void reconcile(set)
+        void refreshPush() // repara la suscripción push si iOS la dejó morir
       }
     })
 
     supabase.auth.onAuthStateChange((_event, session) => {
       set({ email: session?.user?.email ?? null })
-      if (session?.user) void reconcile(set)
+      if (session?.user) {
+        void reconcile(set)
+        void refreshPush()
+      }
     })
 
     // empuja los cambios locales a la nube (con debounce)

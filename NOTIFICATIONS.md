@@ -102,6 +102,9 @@ hora local actual.
 
 ### Notas
 
+- **Se renueva sola:** cada vez que abres la app instalada con sesión, la suscripción se vuelve a
+  subir a Supabase; si iOS la perdió (meses sin abrir, reinstalar) y el permiso sigue concedido,
+  se vuelve a suscribir sin preguntarte. Aun así, abre la app al menos una vez por semana.
 - Solo notifica gastos con **fecha exacta** (los puestos "por semana sin día" no tienen día puntual).
 - Usa tu **escenario principal** (el primero) para decidir los gastos.
 - El envío depende del servicio push de Apple; el timing puede variar unos minutos.
