@@ -18,11 +18,13 @@ export function effectiveDate(m: Movement): ISODate {
   return m.date ?? m.weekStart ?? '9999-12-31'
 }
 
-// Orden dentro de un mismo día: saldo real → bloqueos → ENTRADAS → SALIDAS (gastos y pagos).
+// Orden dentro de un mismo día: saldo real → bloqueos → ENTRADAS → TRASPASOS → SALIDAS (gastos y pagos).
+// El traspaso va después de las entradas (ya llegó la nómina) y antes de las salidas (ya está el dinero).
 function flowRank(m: Movement): number {
   if (m.kind === 'anchor') return 0
   if (m.cardBlock) return 1
-  return m.amount > 0 ? 2 : 3 // entrada antes que salida
+  if (m.transfer) return 3
+  return m.amount > 0 ? 2 : 4 // entrada antes que salida
 }
 
 export function sortMovements(movements: Movement[]): Movement[] {
@@ -110,6 +112,7 @@ export function computeLedger(
     const before = totalCash()
     let paidFrom: ID | undefined
     let charged: ID | undefined
+    let transferredTo: ID | undefined
 
     if (m.cardBlock) {
       // evento: enciende/apaga una cuenta (débito o crédito) a partir de aquí
@@ -120,6 +123,17 @@ export function computeLedger(
       if (cash.has(acct)) cash.set(acct, m.amount)
       else if (voucher.has(acct)) voucher.set(acct, m.amount)
       else debt.set(acct, m.amount)
+    } else if (m.transfer) {
+      // traspaso: mueve el monto entre dos cuentas de liquidez; el total líquido no cambia
+      const amt = Math.abs(m.amount)
+      const src = cash.has(m.transfer.fromId) ? m.transfer.fromId : LIQUID
+      const dst = cash.has(m.transfer.toId) ? m.transfer.toId : LIQUID
+      if (src !== dst) {
+        cash.set(src, (cash.get(src) ?? 0) - amt)
+        cash.set(dst, (cash.get(dst) ?? 0) + amt)
+      }
+      paidFrom = src
+      transferredTo = dst
     } else if (m.payCardId) {
       // pago a tarjeta: sale de una cuenta de liquidez y abona a la deuda (regresa crédito)
       const src = m.paidWith && cash.has(m.paidWith) ? m.paidWith : LIQUID
@@ -156,6 +170,7 @@ export function computeLedger(
       isAnchor: m.kind === 'anchor',
       paidFrom,
       chargedToCardId: charged,
+      transferredTo,
       cashAfter: Object.fromEntries(cash),
       voucherAfter: Object.fromEntries(voucher),
       cardDebtAfter: Object.fromEntries(debt),

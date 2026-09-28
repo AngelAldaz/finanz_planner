@@ -114,6 +114,7 @@ export function expandRecurrence(rec: ScenarioRecurrence, horizon: Horizon): Mov
     debitEligible: rec.debitEligible,
     creditEligible: rec.creditEligible,
     paidWith: rec.paidWith,
+    transfer: rec.transfer,
     included: true,
     source: { kind: 'recurrence' as const, ruleId: rec.id, occurrenceKey: `${rec.id}@${date}` },
     order: i,

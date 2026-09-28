@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import {
   Anchor,
   ArrowDownLeft,
+  ArrowLeftRight,
   ArrowUpRight,
   ChevronDown,
   ChevronUp,
@@ -211,6 +212,7 @@ export function PlanScreen() {
         debitEligible: data.debitEligible,
         creditEligible: data.creditEligible,
         paidWith: data.paidWith,
+        transfer: data.transfer,
         rule: data.recurrence,
       })
       return
@@ -244,6 +246,7 @@ export function PlanScreen() {
         paidWith: data.paidWith,
         payCardId: data.payCardId,
         cardBlock: data.cardBlock,
+        transfer: data.transfer,
       })
     } else {
       await addMovement(data)
@@ -729,6 +732,7 @@ interface RowProps {
 const TYPE_META = {
   ingreso: { bg: 'bg-pos', fg: 'text-white', Icon: ArrowDownLeft },
   gasto: { bg: 'bg-neg', fg: 'text-white', Icon: ArrowUpRight },
+  traspaso: { bg: 'bg-fg', fg: 'text-canvas', Icon: ArrowLeftRight },
   pago: { bg: 'bg-cobalt', fg: 'text-white', Icon: CardIcon },
   real: { bg: 'bg-accent', fg: 'text-ink', Icon: Anchor },
   bloqueo: { bg: 'bg-ink', fg: 'text-white', Icon: Lock },
@@ -737,6 +741,7 @@ const TYPE_META = {
 function movementType(mv: Movement): keyof typeof TYPE_META {
   if (mv.cardBlock) return 'bloqueo'
   if (mv.kind === 'anchor') return 'real'
+  if (mv.transfer) return 'traspaso'
   if (mv.payCardId) return 'pago'
   return mv.amount >= 0 ? 'ingreso' : 'gasto'
 }
@@ -760,8 +765,14 @@ function MovementRow({
   const isCreditAnchor = anchorAcct?.kind === 'credit'
   const blockAcct = isBlock ? acctOf(mv.cardBlock!.cardId) : undefined
   const payAcct = mv.payCardId ? acctOf(mv.payCardId) : undefined
+  const isTransfer = !!mv.transfer
+  const transferFrom = isTransfer ? (acctOf(mv.transfer!.fromId) ?? acctOf(LIQUID)) : undefined
+  const transferTo = isTransfer ? (acctOf(mv.transfer!.toId) ?? acctOf(LIQUID)) : undefined
   // de qué cuenta salió el gasto (si no fue efectivo)
-  const paidAcct = !isAnchor && !mv.payCardId && paidFrom && paidFrom !== LIQUID ? acctOf(paidFrom) : undefined
+  const paidAcct =
+    !isAnchor && !mv.payCardId && !isTransfer && paidFrom && paidFrom !== LIQUID
+      ? acctOf(paidFrom)
+      : undefined
 
   return (
     <li
@@ -826,12 +837,21 @@ function MovementRow({
               </Tag>
             )}
             {payAcct && <Tag color="bg-ink text-paper">{payAcct.name}</Tag>}
+            {isTransfer && (
+              <Tag color="bg-fg text-canvas">
+                {transferFrom?.name ?? '?'} → {transferTo?.name ?? '?'}
+              </Tag>
+            )}
           </span>
         </span>
         <span className="shrink-0 text-right">
           {isBlock ? null : isAnchor ? (
             <span className="text-sm font-bold">
               = <Money cents={mv.amount} />
+            </span>
+          ) : isTransfer ? (
+            <span className="text-sm font-semibold">
+              ⇄ <Money cents={Math.abs(mv.amount)} />
             </span>
           ) : (
             <Money cents={mv.amount} signed className="text-sm font-semibold" />

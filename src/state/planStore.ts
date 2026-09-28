@@ -170,6 +170,7 @@ export interface AddMovementInput {
   accountId?: ID
   payCardId?: ID
   cardBlock?: { cardId: ID; blocked: boolean }
+  transfer?: { fromId: ID; toId: ID }
 }
 
 /** Nombre a mostrar de una cuenta (efectivo / débito / vales / crédito). */
@@ -217,6 +218,7 @@ interface PlanState {
     debitEligible?: boolean
     creditEligible?: boolean
     paidWith?: ID
+    transfer?: { fromId: ID; toId: ID }
     rule: RecurrenceRule
   }) => Promise<void>
   updateMovement: (m: Movement) => Promise<void>
@@ -367,6 +369,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       accountId: input.accountId,
       payCardId: input.payCardId,
       cardBlock: input.cardBlock,
+      transfer: input.transfer,
       included: true,
       source: { kind: 'manual' },
       order,
@@ -382,6 +385,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     debitEligible,
     creditEligible,
     paidWith,
+    transfer,
     rule,
   }) => {
     const { activeScenarioId, movements } = get()
@@ -397,6 +401,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       debitEligible,
       creditEligible,
       paidWith,
+      transfer,
       rule,
       included: true,
     }

@@ -117,6 +117,9 @@ export interface Movement {
   accountId?: ID // para anchor: 'liquid' (default), un débito o un cardId (saldo real de esa cuenta)
   payCardId?: ID // delta que abona a esta tarjeta (pago → regresa crédito disponible)
   cardBlock?: { cardId: ID; blocked: boolean } // evento: apaga/enciende una tarjeta a partir de aquí
+  // traspaso entre cuentas de LIQUIDEZ (efectivo ↔ débitos; nunca vales ni crédito).
+  // `amount` es el monto (positivo); el líquido total no cambia, solo se mueve de cuenta.
+  transfer?: { fromId: ID; toId: ID }
   included: boolean // prender/apagar sin borrar
   source?: MovementSource
   order: number // orden dentro de la semana
@@ -132,6 +135,7 @@ export interface ScenarioRecurrence {
   debitEligible?: boolean
   creditEligible?: boolean
   paidWith?: ID
+  transfer?: { fromId: ID; toId: ID } // traspaso recurrente (p.ej. quincenal a ahorro)
   rule: RecurrenceRule
   included: boolean
 }
@@ -149,6 +153,7 @@ export interface LedgerPoint {
   isAnchor: boolean
   paidFrom?: ID // cuenta que efectivamente pagó el gasto (o a la que entró el ingreso)
   chargedToCardId?: ID // si el gasto se pagó con crédito (paidFrom es una TDC; el líquido no cambió)
+  transferredTo?: ID // traspaso: cuenta destino (paidFrom es la cuenta origen)
   cashAfter: Record<ID, Cents> // saldo por cuenta de liquidez (efectivo + cada débito) tras este punto
   voucherAfter: Record<ID, Cents> // saldo por tarjeta de vales tras este punto (fuera del líquido)
   cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto

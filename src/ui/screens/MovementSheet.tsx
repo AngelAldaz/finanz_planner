@@ -19,7 +19,7 @@ import { fromCents, toCents } from '../../domain/money'
 import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
 import { cn } from '../../lib/cn'
 
-export type SheetMode = 'gasto' | 'ingreso' | 'pago' | 'real' | 'bloqueo'
+export type SheetMode = 'gasto' | 'ingreso' | 'traspaso' | 'pago' | 'real' | 'bloqueo'
 
 export interface MovementSubmit {
   kind: MovementKind
@@ -35,6 +35,7 @@ export interface MovementSubmit {
   payCardId?: ID
   accountId?: ID
   cardBlock?: { cardId: ID; blocked: boolean }
+  transfer?: { fromId: ID; toId: ID }
   recurrence?: RecurrenceRule
 }
 
@@ -61,6 +62,7 @@ function modeOf(m: Movement | null | undefined): SheetMode {
   if (!m) return 'gasto'
   if (m.cardBlock) return 'bloqueo'
   if (m.kind === 'anchor') return 'real'
+  if (m.transfer) return 'traspaso'
   if (m.payCardId) return 'pago'
   return m.amount >= 0 ? 'ingreso' : 'gasto'
 }
@@ -68,6 +70,7 @@ function modeOf(m: Movement | null | undefined): SheetMode {
 const LABELS: Record<SheetMode, string> = {
   gasto: 'Gasto',
   ingreso: 'Ingreso',
+  traspaso: 'Traspaso',
   pago: 'Pago tarjeta',
   real: 'Saldo real',
   bloqueo: 'Apagar/Prender',
@@ -75,6 +78,7 @@ const LABELS: Record<SheetMode, string> = {
 const ACTIVE_CLS: Record<SheetMode, string> = {
   gasto: 'bg-neg text-white',
   ingreso: 'bg-pos text-white',
+  traspaso: 'bg-fg text-canvas',
   pago: 'bg-cobalt text-white',
   real: 'bg-accent text-ink',
   bloqueo: 'bg-ink text-white',
@@ -107,6 +111,8 @@ export function MovementSheet({
   const [paidWith, setPaidWith] = useState<ID | undefined>(undefined)
   const [payCardId, setPayCardId] = useState<ID | undefined>(undefined)
   const [account, setAccount] = useState<ID>(LIQUID)
+  const [transferFrom, setTransferFrom] = useState<ID>(LIQUID)
+  const [transferTo, setTransferTo] = useState<ID | undefined>(undefined)
   const [blockOn, setBlockOn] = useState(true)
   const [repeat, setRepeat] = useState<RecurrencePreset>('once')
   const [deleteMode, setDeleteMode] = useState(false)
@@ -140,6 +146,8 @@ export function MovementSheet({
     setPaidWith(m?.paidWith)
     setPayCardId(m?.payCardId ?? m?.cardBlock?.cardId ?? cards[0]?.id ?? blockTargets[0]?.id)
     setAccount(m?.accountId ?? LIQUID)
+    setTransferFrom(m?.transfer?.fromId ?? LIQUID)
+    setTransferTo(m?.transfer?.toId ?? debitAccounts[0]?.id)
     setBlockOn(m?.cardBlock?.blocked ?? true)
     setRepeat('once')
     setDeleteMode(false)
@@ -154,12 +162,14 @@ export function MovementSheet({
   const modes: SheetMode[] = [
     'gasto',
     'ingreso',
+    ...(debitAccounts.length ? (['traspaso'] as SheetMode[]) : []), // necesita ≥2 cuentas de liquidez
     ...(cards.length ? (['pago'] as SheetMode[]) : []),
     'real',
     ...(blockTargets.length ? (['bloqueo'] as SheetMode[]) : []),
   ]
   const isReal = mode === 'real'
   const isPago = mode === 'pago'
+  const isTraspaso = mode === 'traspaso'
   const isBloqueo = mode === 'bloqueo'
   const isGasto = mode === 'gasto'
   const isRecurring = movement?.source?.kind === 'recurrence'
@@ -180,8 +190,9 @@ export function MovementSheet({
     ? !!payCardId
     : amount !== '' &&
       !Number.isNaN(Number(amount)) &&
-      (isReal || isPago || name.trim() !== '') &&
-      (!isPago || !!payCardId)
+      (isReal || isPago || isTraspaso || name.trim() !== '') &&
+      (!isPago || !!payCardId) &&
+      (!isTraspaso || (!!transferTo && transferTo !== transferFrom))
 
   function changeMode(next: SheetMode) {
     setMode(next)
@@ -191,6 +202,9 @@ export function MovementSheet({
     }
     if (next === 'pago' && !cards.some((c) => c.id === payCardId)) {
       setPayCardId(cards[0]?.id)
+    }
+    if (next === 'traspaso' && (!transferTo || transferTo === transferFrom)) {
+      setTransferTo(cashAccounts.find((a) => a.id !== transferFrom)?.id)
     }
   }
 
@@ -213,6 +227,16 @@ export function MovementSheet({
         amount: toCents(Math.abs(Number(amount))),
         accountId: account,
         weekStart: week || undefined,
+      })
+    } else if (isTraspaso) {
+      onSubmit({
+        kind: 'delta',
+        name: name.trim() || `Traspaso ${nameOf(transferFrom)} → ${nameOf(transferTo)}`,
+        amount: toCents(Math.abs(Number(amount))),
+        transfer: { fromId: transferFrom, toId: transferTo as ID },
+        weekStart: wk,
+        date: date || undefined,
+        recurrence: movement ? undefined : recurrenceFromPreset(repeat, date || week),
       })
     } else if (isPago) {
       onSubmit({
@@ -370,7 +394,13 @@ export function MovementSheet({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={
-                      isReal ? nameOf(account) : isPago ? `Pago ${nameOf(payCardId)}` : 'Gasolina, Don René…'
+                      isReal
+                        ? nameOf(account)
+                        : isPago
+                          ? `Pago ${nameOf(payCardId)}`
+                          : isTraspaso
+                            ? `Traspaso ${nameOf(transferFrom)} → ${nameOf(transferTo)}`
+                            : 'Gasolina, Don René…'
                     }
                     className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
                   />
@@ -396,6 +426,29 @@ export function MovementSheet({
                     value={account}
                     onChange={setAccount}
                   />
+                )}
+                {isTraspaso && (
+                  <>
+                    <Chips
+                      label="¿De qué cuenta sale?"
+                      options={cashAccounts}
+                      value={transferFrom}
+                      onChange={(id) => {
+                        setTransferFrom(id)
+                        if (transferTo === id)
+                          setTransferTo(cashAccounts.find((a) => a.id !== id)?.id)
+                      }}
+                    />
+                    <Chips
+                      label="¿A qué cuenta entra?"
+                      options={cashAccounts.filter((a) => a.id !== transferFrom)}
+                      value={transferTo}
+                      onChange={setTransferTo}
+                    />
+                    <p className="px-1 text-xs text-muted">
+                      Solo mueve dinero entre tus cuentas de liquidez: tu saldo líquido total no cambia.
+                    </p>
+                  </>
                 )}
                 {isPago && (
                   <>
@@ -560,7 +613,7 @@ export function MovementSheet({
                   </div>
                 )}
 
-                {!movement && (mode === 'gasto' || mode === 'ingreso') && (
+                {!movement && (mode === 'gasto' || mode === 'ingreso' || mode === 'traspaso') && (
                   <Field label="Repetir">
                     <select
                       value={repeat}
