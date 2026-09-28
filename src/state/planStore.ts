@@ -4,6 +4,7 @@ import type {
   Cents,
   CreditCard,
   DebitAccount,
+  VoucherAccount,
   Horizon,
   ID,
   ISODate,
@@ -171,14 +172,15 @@ export interface AddMovementInput {
   cardBlock?: { cardId: ID; blocked: boolean }
 }
 
-/** Nombre a mostrar de una cuenta (efectivo / débito / crédito). */
+/** Nombre a mostrar de una cuenta (efectivo / débito / vales / crédito). */
 function accountLabel(
-  s: { debitAccounts: DebitAccount[]; creditCards: CreditCard[] },
+  s: { debitAccounts: DebitAccount[]; voucherAccounts: VoucherAccount[]; creditCards: CreditCard[] },
   accountId: ID,
 ): string {
   if (accountId === LIQUID) return EFECTIVO_NAME
   return (
     s.debitAccounts.find((d) => d.id === accountId)?.name ??
+    s.voucherAccounts.find((v) => v.id === accountId)?.name ??
     s.creditCards.find((c) => c.id === accountId)?.name ??
     'Saldo real'
   )
@@ -191,6 +193,7 @@ interface PlanState {
   categories: Category[]
   creditCards: CreditCard[]
   debitAccounts: DebitAccount[]
+  voucherAccounts: VoucherAccount[]
   activePlanId?: ID
   activeScenarioId?: ID
   movements: Movement[]
@@ -234,6 +237,10 @@ interface PlanState {
   updateDebitAccount: (a: DebitAccount) => Promise<void>
   deleteDebitAccount: (id: ID) => Promise<void>
   moveDebitAccount: (id: ID, dir: -1 | 1) => Promise<void>
+  addVoucherAccount: (name: string) => Promise<void>
+  updateVoucherAccount: (a: VoucherAccount) => Promise<void>
+  deleteVoucherAccount: (id: ID) => Promise<void>
+  moveVoucherAccount: (id: ID, dir: -1 | 1) => Promise<void>
   addCategory: (name: string, color: string) => Promise<void>
   updateCategory: (cat: Category) => Promise<void>
   deleteCategory: (id: ID) => Promise<void>
@@ -246,6 +253,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   categories: [],
   creditCards: [],
   debitAccounts: [],
+  voucherAccounts: [],
   movements: [],
   recurrences: [],
   horizon: DEFAULT_HORIZON,
@@ -257,11 +265,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }
     const plans = await repository.listPlans()
     const plan = plans[0]
-    const [scenarios, categories, creditCards, debitAccounts] = await Promise.all([
+    const [scenarios, categories, creditCards, debitAccounts, voucherAccounts] = await Promise.all([
       plan ? repository.listScenarios(plan.id) : Promise.resolve([]),
       repository.listCategories(),
       repository.listCreditCards(),
       repository.listDebitAccounts(),
+      repository.listVoucherAccounts(),
     ])
     const scenario = scenarios[0]
     set({
@@ -271,6 +280,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       categories,
       creditCards,
       debitAccounts,
+      voucherAccounts,
       activePlanId: plan?.id,
       horizon: dynamicHorizon(plan, []),
       lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
@@ -582,6 +592,39 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   deleteDebitAccount: async (id) => {
     await repository.deleteDebitAccount(id)
     set({ debitAccounts: await repository.listDebitAccounts() })
+  },
+
+  addVoucherAccount: async (name) => {
+    const { voucherAccounts } = get()
+    await repository.putVoucherAccount({
+      id: newId(),
+      name,
+      color: CARD_COLORS[(voucherAccounts.length + 3) % CARD_COLORS.length],
+      position: voucherAccounts.length,
+    })
+    set({ voucherAccounts: await repository.listVoucherAccounts() })
+  },
+
+  updateVoucherAccount: async (a) => {
+    await repository.putVoucherAccount(a)
+    set({ voucherAccounts: await repository.listVoucherAccounts() })
+  },
+
+  deleteVoucherAccount: async (id) => {
+    await repository.deleteVoucherAccount(id)
+    set({ voucherAccounts: await repository.listVoucherAccounts() })
+  },
+
+  moveVoucherAccount: async (id, dir) => {
+    const list = [...get().voucherAccounts].sort((a, b) => a.position - b.position)
+    const i = list.findIndex((v) => v.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    const a = list[i]
+    const b = list[j]
+    await repository.putVoucherAccount({ ...a, position: b.position })
+    await repository.putVoucherAccount({ ...b, position: a.position })
+    set({ voucherAccounts: await repository.listVoucherAccounts() })
   },
 
   moveDebitAccount: async (id, dir) => {

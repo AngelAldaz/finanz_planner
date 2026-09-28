@@ -8,6 +8,7 @@ import type {
   Plan,
   Scenario,
   ScenarioRecurrence,
+  VoucherAccount,
 } from '../../domain/types'
 
 export class FinanzDB extends Dexie {
@@ -19,6 +20,7 @@ export class FinanzDB extends Dexie {
   catalogItems!: Table<CatalogItem, string>
   creditCards!: Table<CreditCard, string>
   debitAccounts!: Table<DebitAccount, string>
+  voucherAccounts!: Table<VoucherAccount, string>
 
   constructor(name = 'finanz') {
     super(name)
@@ -35,6 +37,9 @@ export class FinanzDB extends Dexie {
     })
     this.version(3).stores({
       debitAccounts: 'id, position',
+    })
+    this.version(4).stores({
+      voucherAccounts: 'id, position',
     })
   }
 }

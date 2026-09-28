@@ -12,6 +12,7 @@ import type {
   Plan,
   Scenario,
   ScenarioRecurrence,
+  VoucherAccount,
 } from '../domain/types'
 
 export interface PlanRepository {
@@ -61,6 +62,11 @@ export interface PlanRepository {
   listDebitAccounts(): Promise<DebitAccount[]>
   putDebitAccount(a: DebitAccount): Promise<void>
   deleteDebitAccount(id: ID): Promise<void>
+
+  // voucher accounts (vales: aparte de la liquidez, solo asignación manual)
+  listVoucherAccounts(): Promise<VoucherAccount[]>
+  putVoucherAccount(a: VoucherAccount): Promise<void>
+  deleteVoucherAccount(id: ID): Promise<void>
 
   // bulk / sync seam
   isEmpty(): Promise<boolean>

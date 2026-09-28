@@ -6,6 +6,7 @@ import type {
   Category,
   CreditCard,
   DebitAccount,
+  VoucherAccount,
   ID,
   Movement,
   Plan,
@@ -171,22 +172,43 @@ export class DexiePlanRepository implements PlanRepository {
     await this.db.debitAccounts.delete(id)
   }
 
+  // ---- voucher accounts
+  listVoucherAccounts() {
+    return this.db.voucherAccounts.orderBy('position').toArray()
+  }
+  async putVoucherAccount(a: VoucherAccount) {
+    await this.db.voucherAccounts.put(a)
+  }
+  async deleteVoucherAccount(id: ID) {
+    await this.db.voucherAccounts.delete(id)
+  }
+
   // ----- bulk / sync seam -----
   async isEmpty() {
     return (await this.db.plans.count()) === 0
   }
   async exportAll(): Promise<BackupBundle> {
-    const [plans, scenarios, movements, recurrences, categories, catalogItems, creditCards, debitAccounts] =
-      await Promise.all([
-        this.db.plans.toArray(),
-        this.db.scenarios.toArray(),
-        this.db.movements.toArray(),
-        this.db.recurrences.toArray(),
-        this.db.categories.toArray(),
-        this.db.catalogItems.toArray(),
-        this.db.creditCards.toArray(),
-        this.db.debitAccounts.toArray(),
-      ])
+    const [
+      plans,
+      scenarios,
+      movements,
+      recurrences,
+      categories,
+      catalogItems,
+      creditCards,
+      debitAccounts,
+      voucherAccounts,
+    ] = await Promise.all([
+      this.db.plans.toArray(),
+      this.db.scenarios.toArray(),
+      this.db.movements.toArray(),
+      this.db.recurrences.toArray(),
+      this.db.categories.toArray(),
+      this.db.catalogItems.toArray(),
+      this.db.creditCards.toArray(),
+      this.db.debitAccounts.toArray(),
+      this.db.voucherAccounts.toArray(),
+    ])
     return {
       version: 1,
       plans,
@@ -197,6 +219,7 @@ export class DexiePlanRepository implements PlanRepository {
       catalogItems,
       creditCards,
       debitAccounts,
+      voucherAccounts,
     }
   }
   async importAll(bundle: BackupBundle) {
@@ -210,6 +233,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.catalogItems.clear(),
         this.db.creditCards.clear(),
         this.db.debitAccounts.clear(),
+        this.db.voucherAccounts.clear(),
       ])
       await Promise.all([
         this.db.plans.bulkPut(bundle.plans),
@@ -220,6 +244,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.catalogItems.bulkPut(bundle.catalogItems),
         this.db.creditCards.bulkPut(bundle.creditCards ?? []),
         this.db.debitAccounts.bulkPut(bundle.debitAccounts ?? []),
+        this.db.voucherAccounts.bulkPut(bundle.voucherAccounts ?? []),
       ])
     })
   }

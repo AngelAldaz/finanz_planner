@@ -57,6 +57,18 @@ export interface DebitAccount {
   position: number // jerarquía de prioridad entre débitos
 }
 
+/**
+ * Tarjeta de vales (despensa, restaurante…): dinero aparte que NO es liquidez.
+ * Nunca entra al ruteo automático ni a la jerarquía: un gasto sale de vales SOLO si el
+ * usuario lo asigna a mano (`paidWith`). Puede haber tantas como se quiera.
+ */
+export interface VoucherAccount {
+  id: ID
+  name: string
+  color: string
+  position: number // solo orden visual
+}
+
 /** id del efectivo (la cuenta de liquidez base, siempre presente). */
 export const LIQUID = 'liquid'
 export const EFECTIVO_NAME = 'Efectivo'
@@ -138,6 +150,7 @@ export interface LedgerPoint {
   paidFrom?: ID // cuenta que efectivamente pagó el gasto (o a la que entró el ingreso)
   chargedToCardId?: ID // si el gasto se pagó con crédito (paidFrom es una TDC; el líquido no cambió)
   cashAfter: Record<ID, Cents> // saldo por cuenta de liquidez (efectivo + cada débito) tras este punto
+  voucherAfter: Record<ID, Cents> // saldo por tarjeta de vales tras este punto (fuera del líquido)
   cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto
   cardBlockedAfter: Record<ID, boolean> // estado encendida/apagada por cuenta (débito y crédito) tras este punto
 }
@@ -160,6 +173,7 @@ export interface WeekSummary {
   hadAnchor: boolean
   goesNegative: boolean
   cashClosing: Record<ID, Cents> // saldo de liquidez por cuenta al cierre de la semana
+  voucherClosing: Record<ID, Cents> // saldo de vales por cuenta al cierre de la semana
   cardDebtClosing: Record<ID, Cents> // deuda por tarjeta al cierre de la semana
 }
 
@@ -170,11 +184,11 @@ export interface CardState {
   blocked: boolean // estado proyectado al final del horizonte
 }
 
-/** Saldo proyectado de una cuenta de liquidez (efectivo o débito). */
+/** Saldo proyectado de una cuenta de liquidez (efectivo o débito) o de vales. */
 export interface CashState {
   id: ID
   name: string
-  kind: 'cash' | 'debit'
+  kind: 'cash' | 'debit' | 'voucher'
   balance: Cents
   blocked: boolean // solo aplica a débitos
 }
@@ -192,6 +206,8 @@ export interface ComputedScenario {
   cashStates: CashState[] // efectivo + débitos, saldo final proyectado
   cardStatesToday: CardState[] // a día de hoy (movimientos con fecha ≤ hoy)
   cashStatesToday: CashState[] // a día de hoy
+  voucherStates: CashState[] // vales, saldo final proyectado (NO suman al líquido)
+  voucherStatesToday: CashState[] // vales a día de hoy
 }
 
 export interface ScenarioComparison {
@@ -218,4 +234,5 @@ export interface BackupBundle {
   catalogItems: CatalogItem[]
   creditCards: CreditCard[]
   debitAccounts?: DebitAccount[]
+  voucherAccounts?: VoucherAccount[]
 }

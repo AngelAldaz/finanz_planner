@@ -1,5 +1,15 @@
-// EL núcleo: simulación multi-cuenta (efectivo + débitos + créditos) con ruteo por prioridad.
-import type { Cents, CreditCard, DebitAccount, ID, ISODate, LedgerPoint, Movement } from './types'
+// EL núcleo: simulación multi-cuenta (efectivo + débitos + créditos + vales) con ruteo por prioridad.
+// Los vales van APARTE: no son liquidez y nunca se eligen solos (solo por `paidWith` manual).
+import type {
+  Cents,
+  CreditCard,
+  DebitAccount,
+  ID,
+  ISODate,
+  LedgerPoint,
+  Movement,
+  VoucherAccount,
+} from './types'
 import { LIQUID } from './types'
 import { compareISO } from './dates'
 
@@ -26,6 +36,7 @@ export function sortMovements(movements: Movement[]): Movement[] {
 
 interface RouteCtx {
   cash: Map<ID, Cents>
+  voucher: Map<ID, Cents>
   debt: Map<ID, Cents>
   blocked: Map<ID, boolean>
   cards: CreditCard[]
@@ -34,14 +45,15 @@ interface RouteCtx {
 
 /**
  * Decide de QUÉ cuenta sale un gasto de monto `x` (>0), según:
- *  1) override manual (m.paidWith), si existe.
+ *  1) override manual (m.paidWith), si existe. Es la ÚNICA forma de que salga de vales.
  *  2) prioridad efectivo → débitos → créditos, restringida a las cuentas PERMITIDAS
  *     (flags del gasto) y ENCENDIDAS: la primera que ALCANCE a cubrirlo.
  *  3) si ninguna alcanza: la de mayor prioridad permitida/encendida (queda en rojo).
  */
 function routeExpense(m: Movement, x: Cents, ctx: RouteCtx): ID {
-  const { cash, debt, blocked, cards, liquidityOrder } = ctx
-  if (m.paidWith && (cash.has(m.paidWith) || debt.has(m.paidWith))) return m.paidWith
+  const { cash, voucher, debt, blocked, cards, liquidityOrder } = ctx
+  if (m.paidWith && (cash.has(m.paidWith) || voucher.has(m.paidWith) || debt.has(m.paidWith)))
+    return m.paidWith
 
   const cashOk = m.cashEligible ?? true
   const debitOk = m.debitEligible ?? true
@@ -69,12 +81,14 @@ export function computeLedger(
   movements: Movement[],
   creditCards: CreditCard[] = [],
   debitAccounts: DebitAccount[] = [],
+  voucherAccounts: VoucherAccount[] = [],
 ): LedgerPoint[] {
   const ordered = sortMovements(movements.filter((m) => m.included))
   const cards = [...creditCards].sort((a, b) => a.position - b.position)
   const debits = [...debitAccounts].sort((a, b) => a.position - b.position)
 
   const cash = new Map<ID, Cents>([[LIQUID, 0], ...debits.map((d) => [d.id, 0] as const)])
+  const voucher = new Map<ID, Cents>(voucherAccounts.map((v) => [v.id, 0] as const))
   const debt = new Map<ID, Cents>()
   const blocked = new Map<ID, boolean>()
   for (const c of cards) {
@@ -84,7 +98,7 @@ export function computeLedger(
   for (const d of debits) blocked.set(d.id, false)
 
   const liquidityOrder: ID[] = [LIQUID, ...debits.map((d) => d.id)]
-  const ctx: RouteCtx = { cash, debt, blocked, cards, liquidityOrder }
+  const ctx: RouteCtx = { cash, voucher, debt, blocked, cards, liquidityOrder }
   const totalCash = () => {
     let t = 0
     for (const v of cash.values()) t += v
@@ -101,9 +115,10 @@ export function computeLedger(
       // evento: enciende/apaga una cuenta (débito o crédito) a partir de aquí
       blocked.set(m.cardBlock.cardId, m.cardBlock.blocked)
     } else if (m.kind === 'anchor') {
-      // fija el saldo REAL de una cuenta (efectivo default, un débito o una tarjeta)
+      // fija el saldo REAL de una cuenta (efectivo default, un débito, vales o una tarjeta)
       const acct = m.accountId ?? LIQUID
       if (cash.has(acct)) cash.set(acct, m.amount)
+      else if (voucher.has(acct)) voucher.set(acct, m.amount)
       else debt.set(acct, m.amount)
     } else if (m.payCardId) {
       // pago a tarjeta: sale de una cuenta de liquidez y abona a la deuda (regresa crédito)
@@ -112,15 +127,21 @@ export function computeLedger(
       debt.set(m.payCardId, Math.max(0, (debt.get(m.payCardId) ?? 0) + m.amount))
       paidFrom = src
     } else if (m.amount >= 0) {
-      // ingreso: entra a la cuenta elegida (efectivo default)
-      const dest = m.paidWith && cash.has(m.paidWith) ? m.paidWith : LIQUID
-      cash.set(dest, (cash.get(dest) ?? 0) + m.amount)
-      paidFrom = dest
+      // ingreso: entra a la cuenta elegida (efectivo default; o una carga de vales)
+      if (m.paidWith && voucher.has(m.paidWith)) {
+        voucher.set(m.paidWith, (voucher.get(m.paidWith) ?? 0) + m.amount)
+        paidFrom = m.paidWith
+      } else {
+        const dest = m.paidWith && cash.has(m.paidWith) ? m.paidWith : LIQUID
+        cash.set(dest, (cash.get(dest) ?? 0) + m.amount)
+        paidFrom = dest
+      }
     } else {
       // gasto: ruteo por prioridad
       const x = -m.amount
       const target = routeExpense(m, x, ctx)
       if (cash.has(target)) cash.set(target, (cash.get(target) ?? 0) - x)
+      else if (voucher.has(target)) voucher.set(target, (voucher.get(target) ?? 0) - x)
       else {
         debt.set(target, (debt.get(target) ?? 0) + x)
         charged = target
@@ -136,6 +157,7 @@ export function computeLedger(
       paidFrom,
       chargedToCardId: charged,
       cashAfter: Object.fromEntries(cash),
+      voucherAfter: Object.fromEntries(voucher),
       cardDebtAfter: Object.fromEntries(debt),
       cardBlockedAfter: Object.fromEntries(blocked),
     })
