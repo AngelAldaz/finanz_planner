@@ -62,10 +62,14 @@ Deno.serve(async (req) => {
     return new Response('forbidden', { status: 403 })
   }
   // { force: true } en el body → ignora la hora de aviso (para probar a mano con curl)
+  // { test: true }  → además manda una notificación de prueba aunque no haya gastos
   let force = false
+  let test = false
   try {
     const body = await req.json()
     force = body?.force === true
+    test = body?.test === true
+    if (test) force = true
   } catch {
     /* sin body o no-JSON: normal cuando lo llama el cron */
   }
@@ -121,6 +125,12 @@ Deno.serve(async (req) => {
     )
 
     const notifications: { title: string; body: string; tag: string }[] = []
+    if (test)
+      notifications.push({
+        title: 'Prueba de finanz',
+        body: `Las notificaciones funcionan · ${today}`,
+        tag: 'finanz-test',
+      })
     if (dueToday.length)
       notifications.push({ title: 'Gastos de hoy', body: summarize(dueToday), tag: 'finanz-hoy' })
     if (dueTomorrow.length)
@@ -150,7 +160,7 @@ Deno.serve(async (req) => {
     }
   }
   for (const line of log) console.log(line)
-  return new Response(JSON.stringify({ ...stats, force, log }), {
+  return new Response(JSON.stringify({ ...stats, force, test, log }), {
     headers: { 'Content-Type': 'application/json' },
   })
 })
