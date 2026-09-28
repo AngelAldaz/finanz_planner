@@ -32,8 +32,12 @@ export function weekSummaries(points: LedgerPoint[]): WeekSummary[] {
     let goesNegative = false
     for (const p of pts) {
       const m = p.movement
+      // los flujos de vales NO son liquidez: no entran a los totales de la semana
+      const viaVoucher = !!p.paidFrom && p.paidFrom in p.voucherAfter
       if (m.kind === 'anchor') hadAnchor = true
-      else if (m.amount > 0) totalIn += m.amount
+      else if (viaVoucher) {
+        /* saldo de vales aparte */
+      } else if (m.amount > 0) totalIn += m.amount
       else totalOut += m.amount
       if (p.balanceAfter < lowest) {
         lowest = p.balanceAfter

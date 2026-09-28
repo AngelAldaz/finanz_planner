@@ -108,5 +108,8 @@ describe('tarjetas de vales: aparte del líquido y SOLO por asignación manual',
     ])
     expect(c.voucherStatesToday.find((v) => v.id === 'despensa')?.balance).toBe(300000)
     expect(c.weeks[0].voucherClosing['despensa']).toBe(200000)
+    // los flujos de vales no cuentan como entradas/salidas de liquidez
+    expect(c.weeks[0].totalIn).toBe(0)
+    expect(c.weeks[0].totalOut).toBe(0)
   })
 })

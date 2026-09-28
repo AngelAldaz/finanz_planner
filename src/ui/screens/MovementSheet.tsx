@@ -11,6 +11,7 @@ import type {
   Movement,
   MovementKind,
   RecurrenceRule,
+  VoucherAccount,
 } from '../../domain/types'
 import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
@@ -47,6 +48,7 @@ interface Props {
   categories: Category[]
   cards: CreditCard[]
   debitAccounts: DebitAccount[]
+  voucherAccounts?: VoucherAccount[]
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
   onDeleteFollowing?: (movement: Movement) => void
@@ -88,6 +90,7 @@ export function MovementSheet({
   categories,
   cards,
   debitAccounts,
+  voucherAccounts = [],
   onSubmit,
   onDelete,
   onDeleteFollowing,
@@ -109,7 +112,15 @@ export function MovementSheet({
   const [deleteMode, setDeleteMode] = useState(false)
 
   const cashAccounts = useMemo(() => [EFECTIVO_OPT, ...debitAccounts], [debitAccounts])
-  const allAccounts = useMemo(() => [...cashAccounts, ...cards], [cashAccounts, cards])
+  // cuentas donde puede ENTRAR un ingreso: liquidez + vales (una carga de vales es un ingreso)
+  const incomeTargets = useMemo(
+    () => [...cashAccounts, ...voucherAccounts],
+    [cashAccounts, voucherAccounts],
+  )
+  const allAccounts = useMemo(
+    () => [...cashAccounts, ...voucherAccounts, ...cards],
+    [cashAccounts, voucherAccounts, cards],
+  )
   const blockTargets = useMemo(() => [...debitAccounts, ...cards], [debitAccounts, cards])
   const nameOf = (id?: ID) => allAccounts.find((a) => a.id === id)?.name ?? EFECTIVO_NAME
   const isCreditAccount = (id?: ID) => cards.some((c) => c.id === id)
@@ -152,7 +163,8 @@ export function MovementSheet({
   const isBloqueo = mode === 'bloqueo'
   const isGasto = mode === 'gasto'
   const isRecurring = movement?.source?.kind === 'recurrence'
-  const hasOtherAccounts = debitAccounts.length > 0 || cards.length > 0
+  const hasOtherAccounts =
+    debitAccounts.length > 0 || cards.length > 0 || voucherAccounts.length > 0
 
   // cuentas donde el gasto PUEDE haberse pagado (para el override "lo pagué con")
   const overrideOptions = useMemo(
@@ -214,7 +226,11 @@ export function MovementSheet({
       })
     } else if (isGasto) {
       const cents = toCents(Math.abs(Number(amount)))
-      const validOverride = paidWith && overrideOptions.some((o) => o.id === paidWith)
+      // los vales SIEMPRE son override válido: es la única forma de pagar con ellos
+      const validOverride =
+        paidWith &&
+        (overrideOptions.some((o) => o.id === paidWith) ||
+          voucherAccounts.some((v) => v.id === paidWith))
       onSubmit({
         kind: 'delta',
         name: name.trim(),
@@ -399,10 +415,10 @@ export function MovementSheet({
                     )}
                   </>
                 )}
-                {mode === 'ingreso' && debitAccounts.length > 0 && (
+                {mode === 'ingreso' && incomeTargets.length > 1 && (
                   <Chips
                     label="¿A qué cuenta entró?"
-                    options={cashAccounts}
+                    options={incomeTargets}
                     value={paidWith ?? LIQUID}
                     onChange={setPaidWith}
                   />
@@ -440,10 +456,18 @@ export function MovementSheet({
 
                 {isGasto && hasOtherAccounts && (
                   <div className="space-y-2 rounded-chunky border-2 border-line bg-fg/5 p-2.5">
-                    <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                      ¿Con qué se puede pagar?
-                    </span>
-                    <Toggle label="Efectivo" on={cashEligible} onToggle={() => setCashEligible((v) => !v)} />
+                    {(debitAccounts.length > 0 || cards.length > 0) && (
+                      <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                        ¿Con qué se puede pagar?
+                      </span>
+                    )}
+                    {(debitAccounts.length > 0 || cards.length > 0) && (
+                      <Toggle
+                        label="Efectivo"
+                        on={cashEligible}
+                        onToggle={() => setCashEligible((v) => !v)}
+                      />
+                    )}
                     {debitAccounts.length > 0 && (
                       <Toggle
                         label="Tarjeta de débito"
@@ -458,7 +482,7 @@ export function MovementSheet({
                         onToggle={() => setCreditEligible((v) => !v)}
                       />
                     )}
-                    {overrideOptions.length > 1 && (
+                    {(overrideOptions.length > 1 || voucherAccounts.length > 0) && (
                       <div className="pt-1">
                         <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
                           Lo pagué con (opcional)
@@ -489,7 +513,30 @@ export function MovementSheet({
                               {o.name}
                             </button>
                           ))}
+                          {voucherAccounts.map((v) => (
+                            <button
+                              key={v.id}
+                              onClick={() => setPaidWith(v.id)}
+                              title="Vales: solo si lo eliges aquí"
+                              className={cn(
+                                'flex items-center gap-1.5 rounded-full border-2 border-dashed border-line px-3 py-1 text-sm font-semibold',
+                                paidWith === v.id ? 'bg-ink text-paper' : 'bg-surface',
+                              )}
+                            >
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ background: v.color }}
+                              />
+                              {v.name}
+                              <span className="text-[10px] uppercase opacity-60">vales</span>
+                            </button>
+                          ))}
                         </div>
+                        {voucherAccounts.length > 0 && (
+                          <p className="mt-1.5 px-1 text-[11px] text-muted">
+                            Los vales nunca se usan en automático: solo si los eliges aquí.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

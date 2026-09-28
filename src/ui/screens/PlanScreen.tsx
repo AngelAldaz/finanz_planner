@@ -10,6 +10,7 @@ import {
   Lock,
   Plus,
   Repeat,
+  Ticket,
   Unlock,
   Wallet,
   X,
@@ -31,11 +32,13 @@ import type {
   ID,
   ISODate,
   Movement,
+  VoucherAccount,
 } from '../../domain/types'
 import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
+import { VoucherSheet } from './VoucherSheet'
 
-type AccountMeta = { name: string; color: string; kind: 'cash' | 'debit' | 'credit' }
-type PoolBal = { balance: number; kind: 'efectivo' | 'debito' }
+type AccountMeta = { name: string; color: string; kind: 'cash' | 'debit' | 'voucher' | 'credit' }
+type PoolBal = { balance: number; kind: 'efectivo' | 'debito' | 'vales' }
 type DebitCardView = { id: ID; name: string; color: string; balance: number; blocked: boolean }
 import { formatMXNCompact } from '../../domain/money'
 import { cn } from '../../lib/cn'
@@ -65,6 +68,10 @@ export function PlanScreen() {
   const addDebitAccount = usePlanStore((s) => s.addDebitAccount)
   const updateDebitAccount = usePlanStore((s) => s.updateDebitAccount)
   const deleteDebitAccount = usePlanStore((s) => s.deleteDebitAccount)
+  const voucherAccounts = usePlanStore((s) => s.voucherAccounts)
+  const addVoucherAccount = usePlanStore((s) => s.addVoucherAccount)
+  const updateVoucherAccount = usePlanStore((s) => s.updateVoucherAccount)
+  const deleteVoucherAccount = usePlanStore((s) => s.deleteVoucherAccount)
 
   const computed = useComputed()
   const cashStateById = useMemo(
@@ -85,10 +92,23 @@ export function PlanScreen() {
         let s = 0
         for (const d of debitAccounts) s += p.cashAfter[d.id] ?? 0
         m.set(mv.id, { balance: s, kind: 'debito' })
+      } else if (touched in p.voucherAfter) {
+        m.set(mv.id, { balance: p.voucherAfter[touched] ?? 0, kind: 'vales' })
       }
     }
     return m
   }, [computed, debitAccounts])
+  const voucherCardsView = useMemo<DebitCardView[]>(
+    () =>
+      computed.voucherStatesToday.map((v) => ({
+        id: v.id,
+        name: v.name,
+        color: voucherAccounts.find((a) => a.id === v.id)?.color ?? '#141414',
+        balance: v.balance,
+        blocked: false,
+      })),
+    [computed, voucherAccounts],
+  )
   const debitCardsView = useMemo<DebitCardView[]>(
     () =>
       debitAccounts.map((d) => ({
@@ -114,9 +134,12 @@ export function PlanScreen() {
       new Map<ID, AccountMeta>([
         [LIQUID, { name: EFECTIVO_NAME, color: '#141414', kind: 'cash' }],
         ...debitAccounts.map((d) => [d.id, { name: d.name, color: d.color, kind: 'debit' }] as const),
+        ...voucherAccounts.map(
+          (v) => [v.id, { name: v.name, color: v.color, kind: 'voucher' }] as const,
+        ),
         ...creditCards.map((c) => [c.id, { name: c.name, color: c.color, kind: 'credit' }] as const),
       ]),
-    [debitAccounts, creditCards],
+    [debitAccounts, voucherAccounts, creditCards],
   )
   const allWeeks = useMemo(() => eachWeekStart(horizon.start, horizon.end), [horizon])
 
@@ -161,6 +184,8 @@ export function PlanScreen() {
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
   const [debitSheetOpen, setDebitSheetOpen] = useState(false)
   const [editingDebit, setEditingDebit] = useState<DebitAccount | null>(null)
+  const [voucherSheetOpen, setVoucherSheetOpen] = useState(false)
+  const [editingVoucher, setEditingVoucher] = useState<VoucherAccount | null>(null)
   const [showPast, setShowPast] = useState(false)
 
   function openNew(week?: ISODate, mode?: SheetMode) {
@@ -240,6 +265,15 @@ export function PlanScreen() {
       if (existing) void updateDebitAccount({ ...existing, name: d.name })
     } else {
       void addDebitAccount(d.name)
+    }
+  }
+
+  function handleSaveVoucher(d: { id?: ID; name: string }) {
+    if (d.id) {
+      const existing = voucherAccounts.find((x) => x.id === d.id)
+      if (existing) void updateVoucherAccount({ ...existing, name: d.name })
+    } else {
+      void addVoucherAccount(d.name)
     }
   }
 
@@ -375,6 +409,20 @@ export function PlanScreen() {
         }}
       />
 
+      {voucherCardsView.length > 0 && (
+        <VoucherStrip
+          cards={voucherCardsView}
+          onAdd={() => {
+            setEditingVoucher(null)
+            setVoucherSheetOpen(true)
+          }}
+          onEdit={(id) => {
+            setEditingVoucher(voucherAccounts.find((v) => v.id === id) ?? null)
+            setVoucherSheetOpen(true)
+          }}
+        />
+      )}
+
       <CardStrip
         cards={computed.cardStatesToday}
         onAdd={() => {
@@ -431,6 +479,7 @@ export function PlanScreen() {
         categories={categories}
         cards={creditCards}
         debitAccounts={debitAccounts}
+        voucherAccounts={voucherAccounts}
         onSubmit={handleSubmit}
         onDelete={deleteMovement}
         onDeleteFollowing={(mv) => void deleteSeriesFrom(mv)}
@@ -449,6 +498,54 @@ export function PlanScreen() {
         onSave={handleSaveDebit}
         onDelete={(id) => void deleteDebitAccount(id)}
       />
+      <VoucherSheet
+        open={voucherSheetOpen}
+        onOpenChange={setVoucherSheetOpen}
+        account={editingVoucher}
+        onSave={handleSaveVoucher}
+        onDelete={(id) => void deleteVoucherAccount(id)}
+      />
+    </div>
+  )
+}
+
+/** Tarjetas de vales: saldo aparte del líquido, solo se gastan por asignación manual. */
+function VoucherStrip({
+  cards,
+  onAdd,
+  onEdit,
+}: {
+  cards: DebitCardView[]
+  onAdd: () => void
+  onEdit: (id: ID) => void
+}) {
+  return (
+    <div className="-mx-4 flex gap-3 overflow-x-auto px-4">
+      {cards.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => onEdit(c.id)}
+          className="w-40 shrink-0 rounded-chunky border-2 border-dashed border-line bg-surface p-3 text-left shadow-hard-sm"
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.color }} />
+            <span className="truncate text-sm font-bold">{c.name}</span>
+            <Ticket size={12} className="shrink-0 text-muted" />
+          </div>
+          <Money
+            cents={c.balance}
+            className={cn('mt-2 block text-lg font-bold', c.balance < 0 && 'text-neg')}
+          />
+          <span className="text-[11px] text-muted">vales · aparte del líquido</span>
+        </button>
+      ))}
+      <button
+        onClick={onAdd}
+        aria-label="Agregar tarjeta de vales"
+        className="grid w-12 shrink-0 place-items-center rounded-chunky border-2 border-dashed border-line/40 active:bg-surface"
+      >
+        <Plus size={18} />
+      </button>
     </div>
   )
 }
@@ -712,8 +809,20 @@ function MovementRow({
             )}
             {anchorAcct && <Tag color="bg-accent text-ink">saldo {anchorAcct.name}</Tag>}
             {paidAcct && (
-              <Tag color={paidAcct.kind === 'credit' ? 'bg-cobalt text-white' : 'bg-ink text-paper'}>
-                {paidAcct.kind === 'credit' ? `→ crédito ${paidAcct.name}` : `→ ${paidAcct.name}`}
+              <Tag
+                color={
+                  paidAcct.kind === 'credit'
+                    ? 'bg-cobalt text-white'
+                    : paidAcct.kind === 'voucher'
+                      ? 'bg-pos text-white'
+                      : 'bg-ink text-paper'
+                }
+              >
+                {paidAcct.kind === 'credit'
+                  ? `→ crédito ${paidAcct.name}`
+                  : paidAcct.kind === 'voucher'
+                    ? `→ vales ${paidAcct.name}`
+                    : `→ ${paidAcct.name}`}
               </Tag>
             )}
             {payAcct && <Tag color="bg-ink text-paper">{payAcct.name}</Tag>}
@@ -730,6 +839,7 @@ function MovementRow({
           {!isCreditAnchor && !isBlock && mv.included && pool && (
             <span className="block text-xs text-muted">
               {pool.kind === 'debito' && <span className="mr-0.5 opacity-70">déb</span>}
+              {pool.kind === 'vales' && <span className="mr-0.5 opacity-70">vales</span>}
               <Money cents={pool.balance} />
             </span>
           )}

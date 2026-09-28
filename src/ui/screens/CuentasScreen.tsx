@@ -1,11 +1,21 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, CreditCard as CardIcon, Lock, Pencil, Plus, Wallet } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronUp,
+  CreditCard as CardIcon,
+  Lock,
+  Pencil,
+  Plus,
+  Ticket,
+  Wallet,
+} from 'lucide-react'
 import { usePlanStore } from '../../state/planStore'
 import { useComputed } from '../../state/hooks'
 import { Money } from '../components/Money'
 import { CardSheet } from './CardSheet'
 import { DebitSheet } from './DebitSheet'
-import type { CreditCard, DebitAccount, ID } from '../../domain/types'
+import { VoucherSheet } from './VoucherSheet'
+import type { CreditCard, DebitAccount, ID, VoucherAccount } from '../../domain/types'
 import { LIQUID } from '../../domain/types'
 import { cn } from '../../lib/cn'
 
@@ -20,6 +30,11 @@ export function CuentasScreen() {
   const updateCard = usePlanStore((s) => s.updateCard)
   const deleteCard = usePlanStore((s) => s.deleteCard)
   const moveCard = usePlanStore((s) => s.moveCard)
+  const voucherAccounts = usePlanStore((s) => s.voucherAccounts)
+  const addVoucherAccount = usePlanStore((s) => s.addVoucherAccount)
+  const updateVoucherAccount = usePlanStore((s) => s.updateVoucherAccount)
+  const deleteVoucherAccount = usePlanStore((s) => s.deleteVoucherAccount)
+  const moveVoucherAccount = usePlanStore((s) => s.moveVoucherAccount)
 
   const computed = useComputed()
   const cashById = useMemo(() => new Map(computed.cashStatesToday.map((c) => [c.id, c])), [computed])
@@ -28,17 +43,29 @@ export function CuentasScreen() {
     [computed],
   )
   const efectivo = cashById.get(LIQUID)
+  const voucherById = useMemo(
+    () => new Map(computed.voucherStatesToday.map((v) => [v.id, v])),
+    [computed],
+  )
 
   const [debitSheet, setDebitSheet] = useState(false)
   const [editingDebit, setEditingDebit] = useState<DebitAccount | null>(null)
   const [cardSheet, setCardSheet] = useState(false)
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
+  const [voucherSheet, setVoucherSheet] = useState(false)
+  const [editingVoucher, setEditingVoucher] = useState<VoucherAccount | null>(null)
 
   function saveDebit(d: { id?: ID; name: string }) {
     if (d.id) {
       const existing = debitAccounts.find((x) => x.id === d.id)
       if (existing) void updateDebitAccount({ ...existing, name: d.name })
     } else void addDebitAccount(d.name)
+  }
+  function saveVoucher(d: { id?: ID; name: string }) {
+    if (d.id) {
+      const existing = voucherAccounts.find((x) => x.id === d.id)
+      if (existing) void updateVoucherAccount({ ...existing, name: d.name })
+    } else void addVoucherAccount(d.name)
   }
   function saveCard(d: { id?: ID; name: string; limit: number }) {
     if (d.id) {
@@ -145,12 +172,58 @@ export function CuentasScreen() {
         />
       </section>
 
+      {/* VALES: fuera de la jerarquía, solo por asignación manual */}
+      <section className="space-y-2">
+        <h2 className="flex items-center gap-2 px-1 font-display text-sm font-bold uppercase tracking-wide">
+          <Ticket size={15} /> Vales
+        </h2>
+        <p className="px-1 text-xs text-muted">
+          Aparte del líquido y <b>fuera de la jerarquía</b>: nada se paga con vales en automático. Un
+          gasto sale de aquí solo si lo eliges en «Lo pagué con».
+        </p>
+
+        {voucherAccounts.map((v, i) => {
+          const st = voucherById.get(v.id)
+          return (
+            <AccountRow
+              key={v.id}
+              color={v.color}
+              name={v.name}
+              sub={<Money cents={st?.balance ?? 0} className="text-sm text-muted" />}
+              onUp={i > 0 ? () => void moveVoucherAccount(v.id, -1) : undefined}
+              onDown={
+                i < voucherAccounts.length - 1 ? () => void moveVoucherAccount(v.id, 1) : undefined
+              }
+              onEdit={() => {
+                setEditingVoucher(v)
+                setVoucherSheet(true)
+              }}
+            />
+          )
+        })}
+
+        <AddButton
+          label="Agregar tarjeta de vales"
+          onClick={() => {
+            setEditingVoucher(null)
+            setVoucherSheet(true)
+          }}
+        />
+      </section>
+
       <DebitSheet
         open={debitSheet}
         onOpenChange={setDebitSheet}
         account={editingDebit}
         onSave={saveDebit}
         onDelete={(id) => void deleteDebitAccount(id)}
+      />
+      <VoucherSheet
+        open={voucherSheet}
+        onOpenChange={setVoucherSheet}
+        account={editingVoucher}
+        onSave={saveVoucher}
+        onDelete={(id) => void deleteVoucherAccount(id)}
       />
       <CardSheet
         open={cardSheet}
@@ -175,7 +248,7 @@ function AccountRow({
 }: {
   color: string
   name: string
-  rank: number
+  rank?: number // sin rank = fuera de la jerarquía (vales)
   blocked?: boolean
   sub: React.ReactNode
   onUp?: () => void
@@ -192,9 +265,11 @@ function AccountRow({
         </div>
         {sub}
       </div>
-      <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
-        {rank}º
-      </span>
+      {rank !== undefined && (
+        <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
+          {rank}º
+        </span>
+      )}
       <div className="flex flex-col">
         <button
           onClick={onUp}
