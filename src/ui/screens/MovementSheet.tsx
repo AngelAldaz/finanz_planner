@@ -231,7 +231,7 @@ export function MovementSheet({
     } else if (isTraspaso) {
       onSubmit({
         kind: 'delta',
-        name: name.trim() || `Traspaso ${nameOf(transferFrom)} → ${nameOf(transferTo)}`,
+        name: name.trim() || `${nameOf(transferFrom)} → ${nameOf(transferTo)}`,
         amount: toCents(Math.abs(Number(amount))),
         transfer: { fromId: transferFrom, toId: transferTo as ID },
         weekStart: wk,
@@ -399,7 +399,7 @@ export function MovementSheet({
                         : isPago
                           ? `Pago ${nameOf(payCardId)}`
                           : isTraspaso
-                            ? `Traspaso ${nameOf(transferFrom)} → ${nameOf(transferTo)}`
+                            ? `${nameOf(transferFrom)} → ${nameOf(transferTo)}`
                             : 'Gasolina, Don René…'
                     }
                     className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
