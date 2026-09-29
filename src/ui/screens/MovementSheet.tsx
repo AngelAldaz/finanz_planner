@@ -12,6 +12,7 @@ import type {
   MovementKind,
   RecurrenceRule,
   VoucherAccount,
+  Envelope,
 } from '../../domain/types'
 import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 import { addDays, mondayOf, parseISO, weekRangeLabel } from '../../domain/dates'
@@ -19,7 +20,7 @@ import { fromCents, toCents } from '../../domain/money'
 import { PRESET_LABELS, recurrenceFromPreset, type RecurrencePreset } from '../../domain/recurrence'
 import { cn } from '../../lib/cn'
 
-export type SheetMode = 'gasto' | 'ingreso' | 'traspaso' | 'pago' | 'real' | 'bloqueo'
+export type SheetMode = 'gasto' | 'ingreso' | 'traspaso' | 'apartado' | 'pago' | 'real' | 'bloqueo'
 
 export interface MovementSubmit {
   kind: MovementKind
@@ -50,6 +51,7 @@ interface Props {
   cards: CreditCard[]
   debitAccounts: DebitAccount[]
   voucherAccounts?: VoucherAccount[]
+  envelopes?: Envelope[]
   onSubmit: (data: MovementSubmit) => void
   onDelete?: (id: ID) => void
   onDeleteFollowing?: (movement: Movement) => void
@@ -58,11 +60,14 @@ interface Props {
 const DOW = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do']
 const EFECTIVO_OPT = { id: LIQUID, name: EFECTIVO_NAME, color: '#141414' }
 
-function modeOf(m: Movement | null | undefined): SheetMode {
+function modeOf(m: Movement | null | undefined, envelopes: Envelope[]): SheetMode {
   if (!m) return 'gasto'
   if (m.cardBlock) return 'bloqueo'
   if (m.kind === 'anchor') return 'real'
-  if (m.transfer) return 'traspaso'
+  if (m.transfer) {
+    const isEnv = (id: ID) => envelopes.some((e) => e.id === id)
+    return isEnv(m.transfer.fromId) || isEnv(m.transfer.toId) ? 'apartado' : 'traspaso'
+  }
   if (m.payCardId) return 'pago'
   return m.amount >= 0 ? 'ingreso' : 'gasto'
 }
@@ -71,6 +76,7 @@ const LABELS: Record<SheetMode, string> = {
   gasto: 'Gasto',
   ingreso: 'Ingreso',
   traspaso: 'Traspaso',
+  apartado: 'Apartar',
   pago: 'Pago tarjeta',
   real: 'Saldo real',
   bloqueo: 'Apagar/Prender',
@@ -79,6 +85,7 @@ const ACTIVE_CLS: Record<SheetMode, string> = {
   gasto: 'bg-neg text-white',
   ingreso: 'bg-pos text-white',
   traspaso: 'bg-fg text-canvas',
+  apartado: 'bg-[#9b51e0] text-white',
   pago: 'bg-cobalt text-white',
   real: 'bg-accent text-ink',
   bloqueo: 'bg-ink text-white',
@@ -95,6 +102,7 @@ export function MovementSheet({
   cards,
   debitAccounts,
   voucherAccounts = [],
+  envelopes = [],
   onSubmit,
   onDelete,
   onDeleteFollowing,
@@ -113,6 +121,10 @@ export function MovementSheet({
   const [account, setAccount] = useState<ID>(LIQUID)
   const [transferFrom, setTransferFrom] = useState<ID>(LIQUID)
   const [transferTo, setTransferTo] = useState<ID | undefined>(undefined)
+  // modo "Apartar": cuenta + apartado + dirección (apartar = cuenta → apartado; sacar = al revés)
+  const [envAccount, setEnvAccount] = useState<ID>(LIQUID)
+  const [envId, setEnvId] = useState<ID | undefined>(undefined)
+  const [envDir, setEnvDir] = useState<'in' | 'out'>('in')
   const [blockOn, setBlockOn] = useState(true)
   const [repeat, setRepeat] = useState<RecurrencePreset>('once')
   const [deleteMode, setDeleteMode] = useState(false)
@@ -128,13 +140,26 @@ export function MovementSheet({
     [cashAccounts, voucherAccounts, cards],
   )
   const blockTargets = useMemo(() => [...debitAccounts, ...cards], [debitAccounts, cards])
-  const nameOf = (id?: ID) => allAccounts.find((a) => a.id === id)?.name ?? EFECTIVO_NAME
+  const envOf = (id?: ID) => envelopes.find((e) => e.id === id)
+  /** cuenta "real" detrás de una selección: un apartado apunta a su cuenta dueña */
+  const acctOfSel = (id?: ID) => envOf(id)?.accountId ?? id
+  const envelopesFor = (acct?: ID) => envelopes.filter((e) => e.accountId === acct)
+  const nameOf = (id?: ID): string => {
+    const env = envOf(id)
+    if (env) return `${nameOf(env.accountId)} · ${env.name}`
+    return allAccounts.find((a) => a.id === id)?.name ?? EFECTIVO_NAME
+  }
   const isCreditAccount = (id?: ID) => cards.some((c) => c.id === id)
+  // cuentas de liquidez que tienen al menos un apartado (para el modo "Apartar")
+  const accountsWithEnvelopes = useMemo(
+    () => cashAccounts.filter((a) => envelopes.some((e) => e.accountId === a.id)),
+    [cashAccounts, envelopes],
+  )
 
   useEffect(() => {
     if (!open) return
     const m = movement ?? null
-    setMode(defaultMode ?? modeOf(m))
+    setMode(defaultMode ?? modeOf(m, envelopes))
     setName(m?.name ?? '')
     setAmount(m ? String(Math.abs(fromCents(m.amount))) : '')
     setWeek(m?.weekStart ?? (m?.date ? mondayOf(m.date) : (defaultWeek ?? weeks[0] ?? '')))
@@ -148,6 +173,15 @@ export function MovementSheet({
     setAccount(m?.accountId ?? LIQUID)
     setTransferFrom(m?.transfer?.fromId ?? LIQUID)
     setTransferTo(m?.transfer?.toId ?? debitAccounts[0]?.id)
+    {
+      const toEnv = envelopes.find((e) => e.id === m?.transfer?.toId)
+      const fromEnv = envelopes.find((e) => e.id === m?.transfer?.fromId)
+      const first = envelopes[0]
+      const env = toEnv ?? fromEnv ?? first
+      setEnvDir(fromEnv && !toEnv ? 'out' : 'in')
+      setEnvAccount(env?.accountId ?? LIQUID)
+      setEnvId(env?.id)
+    }
     setBlockOn(m?.cardBlock?.blocked ?? true)
     setRepeat('once')
     setDeleteMode(false)
@@ -163,6 +197,7 @@ export function MovementSheet({
     'gasto',
     'ingreso',
     ...(debitAccounts.length ? (['traspaso'] as SheetMode[]) : []), // necesita ≥2 cuentas de liquidez
+    ...(accountsWithEnvelopes.length ? (['apartado'] as SheetMode[]) : []),
     ...(cards.length ? (['pago'] as SheetMode[]) : []),
     'real',
     ...(blockTargets.length ? (['bloqueo'] as SheetMode[]) : []),
@@ -170,6 +205,7 @@ export function MovementSheet({
   const isReal = mode === 'real'
   const isPago = mode === 'pago'
   const isTraspaso = mode === 'traspaso'
+  const isApartado = mode === 'apartado'
   const isBloqueo = mode === 'bloqueo'
   const isGasto = mode === 'gasto'
   const isRecurring = movement?.source?.kind === 'recurrence'
@@ -190,9 +226,10 @@ export function MovementSheet({
     ? !!payCardId
     : amount !== '' &&
       !Number.isNaN(Number(amount)) &&
-      (isReal || isPago || isTraspaso || name.trim() !== '') &&
+      (isReal || isPago || isTraspaso || isApartado || name.trim() !== '') &&
       (!isPago || !!payCardId) &&
-      (!isTraspaso || (!!transferTo && transferTo !== transferFrom))
+      (!isTraspaso || (!!transferTo && transferTo !== transferFrom)) &&
+      (!isApartado || !!envOf(envId))
 
   function changeMode(next: SheetMode) {
     setMode(next)
@@ -205,6 +242,11 @@ export function MovementSheet({
     }
     if (next === 'traspaso' && (!transferTo || transferTo === transferFrom)) {
       setTransferTo(cashAccounts.find((a) => a.id !== transferFrom)?.id)
+    }
+    if (next === 'apartado' && !envOf(envId)) {
+      const first = envelopes[0]
+      setEnvAccount(first?.accountId ?? LIQUID)
+      setEnvId(first?.id)
     }
   }
 
@@ -228,6 +270,20 @@ export function MovementSheet({
         accountId: account,
         weekStart: week || undefined,
       })
+    } else if (isApartado) {
+      const env = envOf(envId)!
+      onSubmit({
+        kind: 'delta',
+        name: name.trim() || (envDir === 'in' ? `Apartar ${env.name}` : `Sacar de ${env.name}`),
+        amount: toCents(Math.abs(Number(amount))),
+        transfer:
+          envDir === 'in'
+            ? { fromId: env.accountId, toId: env.id }
+            : { fromId: env.id, toId: env.accountId },
+        weekStart: wk,
+        date: date || undefined,
+        recurrence: movement ? undefined : recurrenceFromPreset(repeat, date || week),
+      })
     } else if (isTraspaso) {
       onSubmit({
         kind: 'delta',
@@ -250,11 +306,12 @@ export function MovementSheet({
       })
     } else if (isGasto) {
       const cents = toCents(Math.abs(Number(amount)))
-      // los vales SIEMPRE son override válido: es la única forma de pagar con ellos
+      // los vales y los apartados SIEMPRE son override válido: es la única forma de pagar con ellos
       const validOverride =
         paidWith &&
         (overrideOptions.some((o) => o.id === paidWith) ||
-          voucherAccounts.some((v) => v.id === paidWith))
+          voucherAccounts.some((v) => v.id === paidWith) ||
+          !!envOf(paidWith))
       onSubmit({
         kind: 'delta',
         name: name.trim(),
@@ -400,7 +457,11 @@ export function MovementSheet({
                           ? `Pago ${nameOf(payCardId)}`
                           : isTraspaso
                             ? `${nameOf(transferFrom)} → ${nameOf(transferTo)}`
-                            : 'Gasolina, Don René…'
+                            : isApartado
+                              ? envDir === 'in'
+                                ? `Apartar ${envOf(envId)?.name ?? ''}`
+                                : `Sacar de ${envOf(envId)?.name ?? ''}`
+                              : 'Gasolina, Don René…'
                     }
                     className="w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
                   />
@@ -450,6 +511,52 @@ export function MovementSheet({
                     </p>
                   </>
                 )}
+                {isApartado && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setEnvDir('in')}
+                        className={cn(
+                          'rounded-chunky border-2 border-line py-2 text-sm font-bold active:translate-y-0.5',
+                          envDir === 'in' ? 'bg-[#9b51e0] text-white shadow-hard-sm' : 'bg-surface',
+                        )}
+                      >
+                        Apartar
+                      </button>
+                      <button
+                        onClick={() => setEnvDir('out')}
+                        className={cn(
+                          'rounded-chunky border-2 border-line py-2 text-sm font-bold active:translate-y-0.5',
+                          envDir === 'out' ? 'bg-ink text-paper shadow-hard-sm' : 'bg-surface',
+                        )}
+                      >
+                        Sacar del apartado
+                      </button>
+                    </div>
+                    {accountsWithEnvelopes.length > 1 && (
+                      <Chips
+                        label="¿En qué cuenta?"
+                        options={accountsWithEnvelopes}
+                        value={envAccount}
+                        onChange={(id) => {
+                          setEnvAccount(id)
+                          setEnvId(envelopesFor(id)[0]?.id)
+                        }}
+                      />
+                    )}
+                    <Chips
+                      label="¿Qué apartado?"
+                      options={envelopesFor(envAccount)}
+                      value={envId}
+                      onChange={setEnvId}
+                    />
+                    <p className="px-1 text-xs text-muted">
+                      {envDir === 'in'
+                        ? `El dinero se queda en ${nameOf(envAccount)}, pero deja de estar libre: los gastos automáticos no lo tocan.`
+                        : `El dinero vuelve a estar libre en ${nameOf(envAccount)}.`}
+                    </p>
+                  </>
+                )}
                 {isPago && (
                   <>
                     <Chips
@@ -458,23 +565,37 @@ export function MovementSheet({
                       value={payCardId}
                       onChange={setPayCardId}
                     />
-                    {debitAccounts.length > 0 && (
+                    {(debitAccounts.length > 0 || envelopes.length > 0) && (
                       <Chips
                         label="¿De qué cuenta sale el pago?"
                         options={cashAccounts}
-                        value={paidWith ?? LIQUID}
+                        value={acctOfSel(paidWith) ?? LIQUID}
                         onChange={setPaidWith}
                       />
                     )}
+                    <EnvelopePick
+                      accountId={acctOfSel(paidWith) ?? LIQUID}
+                      envelopes={envelopes}
+                      value={paidWith}
+                      onChange={setPaidWith}
+                    />
                   </>
                 )}
-                {mode === 'ingreso' && incomeTargets.length > 1 && (
-                  <Chips
-                    label="¿A qué cuenta entró?"
-                    options={incomeTargets}
-                    value={paidWith ?? LIQUID}
-                    onChange={setPaidWith}
-                  />
+                {mode === 'ingreso' && (incomeTargets.length > 1 || envelopes.length > 0) && (
+                  <>
+                    <Chips
+                      label="¿A qué cuenta entró?"
+                      options={incomeTargets}
+                      value={acctOfSel(paidWith) ?? LIQUID}
+                      onChange={setPaidWith}
+                    />
+                    <EnvelopePick
+                      accountId={acctOfSel(paidWith) ?? LIQUID}
+                      envelopes={envelopes}
+                      value={paidWith}
+                      onChange={setPaidWith}
+                    />
+                  </>
                 )}
 
                 {isReal ? (
@@ -507,7 +628,7 @@ export function MovementSheet({
                   />
                 )}
 
-                {isGasto && hasOtherAccounts && (
+                {isGasto && (hasOtherAccounts || envelopes.length > 0) && (
                   <div className="space-y-2 rounded-chunky border-2 border-line bg-fg/5 p-2.5">
                     {(debitAccounts.length > 0 || cards.length > 0) && (
                       <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
@@ -535,7 +656,9 @@ export function MovementSheet({
                         onToggle={() => setCreditEligible((v) => !v)}
                       />
                     )}
-                    {(overrideOptions.length > 1 || voucherAccounts.length > 0) && (
+                    {(overrideOptions.length > 1 ||
+                      voucherAccounts.length > 0 ||
+                      envelopes.length > 0) && (
                       <div className="pt-1">
                         <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
                           Lo pagué con (opcional)
@@ -556,7 +679,7 @@ export function MovementSheet({
                               onClick={() => setPaidWith(o.id)}
                               className={cn(
                                 'flex items-center gap-1.5 rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
-                                paidWith === o.id ? 'bg-ink text-paper' : 'bg-surface',
+                                acctOfSel(paidWith) === o.id ? 'bg-ink text-paper' : 'bg-surface',
                               )}
                             >
                               <span
@@ -585,9 +708,34 @@ export function MovementSheet({
                             </button>
                           ))}
                         </div>
+                        {paidWith && !envOf(paidWith)?.id && (
+                          <div className="mt-2">
+                            <EnvelopePick
+                              accountId={paidWith}
+                              envelopes={envelopes}
+                              value={paidWith}
+                              onChange={setPaidWith}
+                            />
+                          </div>
+                        )}
+                        {paidWith && envOf(paidWith) && (
+                          <div className="mt-2">
+                            <EnvelopePick
+                              accountId={envOf(paidWith)!.accountId}
+                              envelopes={envelopes}
+                              value={paidWith}
+                              onChange={setPaidWith}
+                            />
+                          </div>
+                        )}
                         {voucherAccounts.length > 0 && (
                           <p className="mt-1.5 px-1 text-[11px] text-muted">
                             Los vales nunca se usan en automático: solo si los eliges aquí.
+                          </p>
+                        )}
+                        {envelopes.length > 0 && (
+                          <p className="mt-1.5 px-1 text-[11px] text-muted">
+                            Lo apartado tampoco: en automático solo se usa el dinero libre de cada cuenta.
                           </p>
                         )}
                       </div>
@@ -613,7 +761,11 @@ export function MovementSheet({
                   </div>
                 )}
 
-                {!movement && (mode === 'gasto' || mode === 'ingreso' || mode === 'traspaso') && (
+                {!movement &&
+                  (mode === 'gasto' ||
+                    mode === 'ingreso' ||
+                    mode === 'traspaso' ||
+                    mode === 'apartado') && (
                   <Field label="Repetir">
                     <select
                       value={repeat}
@@ -761,6 +913,57 @@ function WeekDay({
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * Fila "¿De qué apartado?" para una cuenta de liquidez. `value` es la selección actual
+ * (id de la cuenta = sin apartado, o id de un apartado). No se muestra si la cuenta no tiene apartados.
+ */
+function EnvelopePick({
+  accountId,
+  envelopes,
+  value,
+  onChange,
+}: {
+  accountId: ID
+  envelopes: Envelope[]
+  value?: ID
+  onChange: (id: ID) => void
+}) {
+  const list = envelopes.filter((e) => e.accountId === accountId)
+  if (!list.length) return null
+  const noneActive = !list.some((e) => e.id === value)
+  return (
+    <div>
+      <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        ¿De qué apartado?
+      </span>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <button
+          onClick={() => onChange(accountId)}
+          className={cn(
+            'rounded-full border-2 border-line px-3 py-1 text-sm font-semibold',
+            noneActive ? 'bg-ink text-paper' : 'bg-surface',
+          )}
+        >
+          Dinero libre
+        </button>
+        {list.map((e) => (
+          <button
+            key={e.id}
+            onClick={() => onChange(e.id)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border-2 border-dotted border-line px-3 py-1 text-sm font-semibold',
+              value === e.id ? 'bg-ink text-paper' : 'bg-surface',
+            )}
+          >
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: e.color }} />
+            {e.name}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

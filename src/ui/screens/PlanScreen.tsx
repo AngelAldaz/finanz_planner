@@ -9,6 +9,7 @@ import {
   Copy,
   CreditCard as CardIcon,
   Lock,
+  PiggyBank,
   Plus,
   Repeat,
   Ticket,
@@ -30,6 +31,7 @@ import type {
   ComputedScenario,
   CreditCard,
   DebitAccount,
+  Envelope,
   ID,
   ISODate,
   Movement,
@@ -38,9 +40,21 @@ import type {
 import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 import { VoucherSheet } from './VoucherSheet'
 
-type AccountMeta = { name: string; color: string; kind: 'cash' | 'debit' | 'voucher' | 'credit' }
-type PoolBal = { balance: number; kind: 'efectivo' | 'debito' | 'vales' }
-type DebitCardView = { id: ID; name: string; color: string; balance: number; blocked: boolean }
+type AccountMeta = {
+  name: string
+  color: string
+  kind: 'cash' | 'debit' | 'voucher' | 'credit' | 'envelope'
+  short?: string // apartado: solo su nombre (sin la cuenta)
+}
+type PoolBal = { balance: number; kind: 'efectivo' | 'debito' | 'vales' | 'apartado' }
+type DebitCardView = {
+  id: ID
+  name: string
+  color: string
+  balance: number // libre
+  reserved?: number // apartado
+  blocked: boolean
+}
 import { formatMXNCompact } from '../../domain/money'
 import { cn } from '../../lib/cn'
 
@@ -70,6 +84,7 @@ export function PlanScreen() {
   const updateDebitAccount = usePlanStore((s) => s.updateDebitAccount)
   const deleteDebitAccount = usePlanStore((s) => s.deleteDebitAccount)
   const voucherAccounts = usePlanStore((s) => s.voucherAccounts)
+  const envelopes = usePlanStore((s) => s.envelopes)
   const addVoucherAccount = usePlanStore((s) => s.addVoucherAccount)
   const updateVoucherAccount = usePlanStore((s) => s.updateVoucherAccount)
   const deleteVoucherAccount = usePlanStore((s) => s.deleteVoucherAccount)
@@ -87,11 +102,14 @@ export function PlanScreen() {
       const mv = p.movement
       const touched = mv.kind === 'anchor' ? (mv.accountId ?? LIQUID) : p.paidFrom
       if (!touched) continue
-      if (touched === LIQUID) {
-        m.set(mv.id, { balance: p.cashAfter[LIQUID] ?? 0, kind: 'efectivo' })
+      if (p.envelopeId) {
+        // tocó un apartado: muestra lo que queda en ESE apartado
+        m.set(mv.id, { balance: p.envelopeAfter[p.envelopeId] ?? 0, kind: 'apartado' })
+      } else if (touched === LIQUID) {
+        m.set(mv.id, { balance: p.freeAfter[LIQUID] ?? 0, kind: 'efectivo' })
       } else if (debitIds.has(touched)) {
         let s = 0
-        for (const d of debitAccounts) s += p.cashAfter[d.id] ?? 0
+        for (const d of debitAccounts) s += p.freeAfter[d.id] ?? 0
         m.set(mv.id, { balance: s, kind: 'debito' })
       } else if (touched in p.voucherAfter) {
         m.set(mv.id, { balance: p.voucherAfter[touched] ?? 0, kind: 'vales' })
@@ -116,7 +134,8 @@ export function PlanScreen() {
         id: d.id,
         name: d.name,
         color: d.color,
-        balance: cashStateById.get(d.id)?.balance ?? 0,
+        balance: cashStateById.get(d.id)?.free ?? 0,
+        reserved: cashStateById.get(d.id)?.reserved ?? 0,
         blocked: cashStateById.get(d.id)?.blocked ?? false,
       })),
     [debitAccounts, cashStateById],
@@ -124,6 +143,13 @@ export function PlanScreen() {
   const paidFromById = useMemo(
     () =>
       new Map(computed.points.filter((p) => p.paidFrom).map((p) => [p.movement.id, p.paidFrom!])),
+    [computed],
+  )
+  const envelopeById = useMemo(
+    () =>
+      new Map(
+        computed.points.filter((p) => p.envelopeId).map((p) => [p.movement.id, p.envelopeId!]),
+      ),
     [computed],
   )
   const summaryByWeek = useMemo(
@@ -139,8 +165,18 @@ export function PlanScreen() {
           (v) => [v.id, { name: v.name, color: v.color, kind: 'voucher' }] as const,
         ),
         ...creditCards.map((c) => [c.id, { name: c.name, color: c.color, kind: 'credit' }] as const),
+        ...envelopes.map((e) => {
+          const owner =
+            e.accountId === LIQUID
+              ? EFECTIVO_NAME
+              : (debitAccounts.find((d) => d.id === e.accountId)?.name ?? '?')
+          return [
+            e.id,
+            { name: `${owner} · ${e.name}`, short: e.name, color: e.color, kind: 'envelope' },
+          ] as const
+        }),
       ]),
-    [debitAccounts, voucherAccounts, creditCards],
+    [debitAccounts, voucherAccounts, creditCards, envelopes],
   )
   const allWeeks = useMemo(() => eachWeekStart(horizon.start, horizon.end), [horizon])
 
@@ -328,6 +364,7 @@ export function PlanScreen() {
               mv={mv}
               pool={poolById.get(mv.id)}
               paidFrom={paidFromById.get(mv.id)}
+              envelopeId={envelopeById.get(mv.id)}
               category={categories.find((c) => c.id === mv.categoryId)}
               accountsById={accountsById}
               readOnly={readOnly}
@@ -483,6 +520,7 @@ export function PlanScreen() {
         cards={creditCards}
         debitAccounts={debitAccounts}
         voucherAccounts={voucherAccounts}
+        envelopes={envelopes}
         onSubmit={handleSubmit}
         onDelete={deleteMovement}
         onDeleteFollowing={(mv) => void deleteSeriesFrom(mv)}
@@ -555,11 +593,13 @@ function VoucherStrip({
 
 function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: number }) {
   const alertWeek = computed.weeks.find((w) => w.lowestBalance < threshold)
-  const efectivo = computed.cashStates.find((c) => c.id === LIQUID)?.balance ?? 0
+  // el hero habla de liquidez DISPONIBLE (sin lo apartado); lo apartado se muestra aparte
+  const efectivo = computed.cashStates.find((c) => c.id === LIQUID)?.free ?? 0
   const debito = computed.cashStates
     .filter((c) => c.kind === 'debit')
-    .reduce((a, c) => a + c.balance, 0)
+    .reduce((a, c) => a + c.free, 0)
   const hasDebit = computed.cashStates.some((c) => c.kind === 'debit')
+  const reserved = computed.finalReserved
   return (
     <div className="rounded-chunky border-2 border-line bg-ink p-5 text-paper shadow-hard">
       {hasDebit ? (
@@ -572,13 +612,26 @@ function Hero({ computed, threshold }: { computed: ComputedScenario; threshold: 
             <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">Débito</p>
             <Money cents={debito} className="text-3xl font-bold text-paper" />
           </div>
+          {reserved !== 0 && (
+            <div className="flex items-baseline justify-between gap-3 border-t-2 border-paper/15 pt-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
+                Apartado
+              </p>
+              <Money cents={reserved} className="text-xl font-bold text-paper/70" />
+            </div>
+          )}
         </div>
       ) : (
         <>
           <p className="text-xs font-semibold uppercase tracking-wider text-paper/60">
-            Saldo líquido final
+            {reserved !== 0 ? 'Liquidez disponible' : 'Saldo líquido final'}
           </p>
           <Money cents={efectivo} className="mt-1 block text-4xl font-bold text-paper" />
+          {reserved !== 0 && (
+            <p className="mt-1 text-sm text-paper/70">
+              + <Money cents={reserved} className="text-paper/90" /> apartado
+            </p>
+          )}
         </>
       )}
       <div className="mt-2 text-sm text-paper/70">
@@ -636,7 +689,13 @@ function DebitStrip({
             cents={c.balance}
             className={cn('mt-2 block text-lg font-bold', c.balance < 0 && 'text-neg')}
           />
-          <span className="text-[11px] text-muted">{c.blocked ? 'apagada' : 'disponible'}</span>
+          <span className="text-[11px] text-muted">
+            {c.blocked
+              ? 'apagada'
+              : c.reserved
+                ? <>libre · <Money cents={c.reserved} /> apartado</>
+                : 'disponible'}
+          </span>
         </button>
       ))}
       <button
@@ -722,6 +781,7 @@ interface RowProps {
   mv: Movement
   pool?: PoolBal
   paidFrom?: ID
+  envelopeId?: ID
   category?: Category
   accountsById: Map<ID, AccountMeta>
   readOnly?: boolean
@@ -733,15 +793,19 @@ const TYPE_META = {
   ingreso: { bg: 'bg-pos', fg: 'text-white', Icon: ArrowDownLeft },
   gasto: { bg: 'bg-neg', fg: 'text-white', Icon: ArrowUpRight },
   traspaso: { bg: 'bg-fg', fg: 'text-canvas', Icon: ArrowLeftRight },
+  apartado: { bg: 'bg-[#9b51e0]', fg: 'text-white', Icon: PiggyBank },
   pago: { bg: 'bg-cobalt', fg: 'text-white', Icon: CardIcon },
   real: { bg: 'bg-accent', fg: 'text-ink', Icon: Anchor },
   bloqueo: { bg: 'bg-ink', fg: 'text-white', Icon: Lock },
 } as const
 
-function movementType(mv: Movement): keyof typeof TYPE_META {
+function movementType(mv: Movement, accountsById: Map<ID, AccountMeta>): keyof typeof TYPE_META {
   if (mv.cardBlock) return 'bloqueo'
   if (mv.kind === 'anchor') return 'real'
-  if (mv.transfer) return 'traspaso'
+  if (mv.transfer) {
+    const isEnv = (id: ID) => accountsById.get(id)?.kind === 'envelope'
+    return isEnv(mv.transfer.fromId) || isEnv(mv.transfer.toId) ? 'apartado' : 'traspaso'
+  }
   if (mv.payCardId) return 'pago'
   return mv.amount >= 0 ? 'ingreso' : 'gasto'
 }
@@ -750,13 +814,14 @@ function MovementRow({
   mv,
   pool,
   paidFrom,
+  envelopeId,
   category,
   accountsById,
   readOnly,
   onEdit,
   onToggle,
 }: RowProps) {
-  const meta = TYPE_META[movementType(mv)]
+  const meta = TYPE_META[movementType(mv, accountsById)]
   const isBlock = !!mv.cardBlock
   const Icon = isBlock ? (mv.cardBlock!.blocked ? Lock : Unlock) : meta.Icon
   const isAnchor = mv.kind === 'anchor'
@@ -768,9 +833,12 @@ function MovementRow({
   const isTransfer = !!mv.transfer
   const transferFrom = isTransfer ? (acctOf(mv.transfer!.fromId) ?? acctOf(LIQUID)) : undefined
   const transferTo = isTransfer ? (acctOf(mv.transfer!.toId) ?? acctOf(LIQUID)) : undefined
+  const isApartar = isTransfer && transferTo?.kind === 'envelope'
+  const isSacar = isTransfer && !isApartar && transferFrom?.kind === 'envelope'
+  const envAcct = envelopeId ? acctOf(envelopeId) : undefined
   // de qué cuenta salió el gasto (si no fue efectivo)
   const paidAcct =
-    !isAnchor && !mv.payCardId && !isTransfer && paidFrom && paidFrom !== LIQUID
+    !isAnchor && !mv.payCardId && !isTransfer && !envelopeId && paidFrom && paidFrom !== LIQUID
       ? acctOf(paidFrom)
       : undefined
 
@@ -837,10 +905,19 @@ function MovementRow({
               </Tag>
             )}
             {payAcct && <Tag color="bg-ink text-paper">{payAcct.name}</Tag>}
-            {isTransfer && (
+            {isApartar && (
+              <Tag color="bg-[#9b51e0] text-white">→ apartado {transferTo?.short}</Tag>
+            )}
+            {isSacar && (
+              <Tag color="bg-[#9b51e0] text-white">← apartado {transferFrom?.short}</Tag>
+            )}
+            {isTransfer && !isApartar && !isSacar && (
               <Tag color="bg-fg text-canvas">
                 {transferFrom?.name ?? '?'} → {transferTo?.name ?? '?'}
               </Tag>
+            )}
+            {envAcct && !isTransfer && (
+              <Tag color="bg-[#9b51e0] text-white">→ {envAcct.name}</Tag>
             )}
           </span>
         </span>
@@ -860,6 +937,7 @@ function MovementRow({
             <span className="block text-xs text-muted">
               {pool.kind === 'debito' && <span className="mr-0.5 opacity-70">déb</span>}
               {pool.kind === 'vales' && <span className="mr-0.5 opacity-70">vales</span>}
+              {pool.kind === 'apartado' && <span className="mr-0.5 opacity-70">apart.</span>}
               <Money cents={pool.balance} />
             </span>
           )}

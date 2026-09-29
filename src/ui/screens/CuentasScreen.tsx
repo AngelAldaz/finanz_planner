@@ -5,6 +5,7 @@ import {
   CreditCard as CardIcon,
   Lock,
   Pencil,
+  PiggyBank,
   Plus,
   Ticket,
   Wallet,
@@ -15,8 +16,9 @@ import { Money } from '../components/Money'
 import { CardSheet } from './CardSheet'
 import { DebitSheet } from './DebitSheet'
 import { VoucherSheet } from './VoucherSheet'
-import type { CreditCard, DebitAccount, ID, VoucherAccount } from '../../domain/types'
-import { LIQUID } from '../../domain/types'
+import { EnvelopeSheet } from './EnvelopeSheet'
+import type { CashState, CreditCard, DebitAccount, Envelope, ID, VoucherAccount } from '../../domain/types'
+import { EFECTIVO_NAME, LIQUID } from '../../domain/types'
 import { cn } from '../../lib/cn'
 
 export function CuentasScreen() {
@@ -35,6 +37,11 @@ export function CuentasScreen() {
   const updateVoucherAccount = usePlanStore((s) => s.updateVoucherAccount)
   const deleteVoucherAccount = usePlanStore((s) => s.deleteVoucherAccount)
   const moveVoucherAccount = usePlanStore((s) => s.moveVoucherAccount)
+  const envelopes = usePlanStore((s) => s.envelopes)
+  const addEnvelope = usePlanStore((s) => s.addEnvelope)
+  const updateEnvelope = usePlanStore((s) => s.updateEnvelope)
+  const deleteEnvelope = usePlanStore((s) => s.deleteEnvelope)
+  const moveEnvelope = usePlanStore((s) => s.moveEnvelope)
 
   const computed = useComputed()
   const cashById = useMemo(() => new Map(computed.cashStatesToday.map((c) => [c.id, c])), [computed])
@@ -47,6 +54,10 @@ export function CuentasScreen() {
     () => new Map(computed.voucherStatesToday.map((v) => [v.id, v])),
     [computed],
   )
+  const envBalance = useMemo(
+    () => new Map(computed.envelopeStatesToday.map((e) => [e.envelope.id, e.balance])),
+    [computed],
+  )
 
   const [debitSheet, setDebitSheet] = useState(false)
   const [editingDebit, setEditingDebit] = useState<DebitAccount | null>(null)
@@ -54,6 +65,31 @@ export function CuentasScreen() {
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null)
   const [voucherSheet, setVoucherSheet] = useState(false)
   const [editingVoucher, setEditingVoucher] = useState<VoucherAccount | null>(null)
+  const [envSheet, setEnvSheet] = useState(false)
+  const [editingEnv, setEditingEnv] = useState<Envelope | null>(null)
+  const [envAccountId, setEnvAccountId] = useState<ID>(LIQUID)
+  const accountName = (id: ID) =>
+    id === LIQUID ? EFECTIVO_NAME : (debitAccounts.find((d) => d.id === id)?.name ?? '?')
+  function openEnvelope(accountId: ID, env: Envelope | null) {
+    setEnvAccountId(accountId)
+    setEditingEnv(env)
+    setEnvSheet(true)
+  }
+  function saveEnvelope(d: { id?: ID; name: string }) {
+    if (d.id) {
+      const existing = envelopes.find((x) => x.id === d.id)
+      if (existing) void updateEnvelope({ ...existing, name: d.name })
+    } else void addEnvelope(envAccountId, d.name)
+  }
+  const envelopeListProps = (accountId: ID) => ({
+    accountId,
+    accountName: accountName(accountId),
+    envelopes,
+    balances: envBalance,
+    onAdd: () => openEnvelope(accountId, null),
+    onEdit: (e: Envelope) => openEnvelope(accountId, e),
+    onMove: (id: ID, dir: -1 | 1) => void moveEnvelope(id, dir),
+  })
 
   function saveDebit(d: { id?: ID; name: string }) {
     if (d.id) {
@@ -92,30 +128,35 @@ export function CuentasScreen() {
           <span className="h-3 w-3 shrink-0 rounded-full bg-ink" />
           <div className="min-w-0 flex-1">
             <div className="font-bold">Efectivo</div>
-            <Money cents={efectivo?.balance ?? 0} className="text-sm text-muted" />
+            <LiquiditySub st={efectivo} />
           </div>
           <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
             1º
           </span>
         </div>
+        <EnvelopeList {...envelopeListProps(LIQUID)} />
 
         {debitAccounts.map((d, i) => {
           const st = cashById.get(d.id)
           return (
-            <AccountRow
-              key={d.id}
-              color={d.color}
-              name={d.name}
-              rank={i + 2}
-              blocked={st?.blocked}
-              sub={<Money cents={st?.balance ?? 0} className="text-sm text-muted" />}
-              onUp={i > 0 ? () => void moveDebitAccount(d.id, -1) : undefined}
-              onDown={i < debitAccounts.length - 1 ? () => void moveDebitAccount(d.id, 1) : undefined}
-              onEdit={() => {
-                setEditingDebit(d)
-                setDebitSheet(true)
-              }}
-            />
+            <div key={d.id} className="space-y-2">
+              <AccountRow
+                color={d.color}
+                name={d.name}
+                rank={i + 2}
+                blocked={st?.blocked}
+                sub={<LiquiditySub st={st} />}
+                onUp={i > 0 ? () => void moveDebitAccount(d.id, -1) : undefined}
+                onDown={
+                  i < debitAccounts.length - 1 ? () => void moveDebitAccount(d.id, 1) : undefined
+                }
+                onEdit={() => {
+                  setEditingDebit(d)
+                  setDebitSheet(true)
+                }}
+              />
+              <EnvelopeList {...envelopeListProps(d.id)} />
+            </div>
           )
         })}
 
@@ -225,6 +266,14 @@ export function CuentasScreen() {
         onSave={saveVoucher}
         onDelete={(id) => void deleteVoucherAccount(id)}
       />
+      <EnvelopeSheet
+        open={envSheet}
+        onOpenChange={setEnvSheet}
+        envelope={editingEnv}
+        accountName={accountName(envAccountId)}
+        onSave={saveEnvelope}
+        onDelete={(id) => void deleteEnvelope(id)}
+      />
       <CardSheet
         open={cardSheet}
         onOpenChange={setCardSheet}
@@ -232,6 +281,94 @@ export function CuentasScreen() {
         onSave={saveCard}
         onDelete={(id) => void deleteCard(id)}
       />
+    </div>
+  )
+}
+
+/** "Libre $X · Apartado $Y" (o solo el saldo si la cuenta no tiene apartados). */
+function LiquiditySub({ st }: { st?: CashState }) {
+  if (!st) return <Money cents={0} className="text-sm text-muted" />
+  if (!st.reserved) return <Money cents={st.balance} className="text-sm text-muted" />
+  return (
+    <span className="flex flex-wrap gap-x-3 text-sm">
+      <span className="text-fg">
+        libre <Money cents={st.free} className={cn(st.free < 0 && 'text-neg')} />
+      </span>
+      <span className="text-muted">
+        apartado <Money cents={st.reserved} />
+      </span>
+    </span>
+  )
+}
+
+/** Apartados de una cuenta de liquidez, anidados bajo su fila. */
+function EnvelopeList({
+  accountId,
+  accountName,
+  envelopes,
+  balances,
+  onAdd,
+  onEdit,
+  onMove,
+}: {
+  accountId: ID
+  accountName: string
+  envelopes: Envelope[]
+  balances: Map<ID, number>
+  onAdd: () => void
+  onEdit: (e: Envelope) => void
+  onMove: (id: ID, dir: -1 | 1) => void
+}) {
+  const list = envelopes
+    .filter((e) => e.accountId === accountId)
+    .sort((a, b) => a.position - b.position)
+  return (
+    <div className="ml-6 space-y-1.5">
+      {list.map((e, i) => {
+        const bal = balances.get(e.id) ?? 0
+        return (
+          <div
+            key={e.id}
+            className="flex items-center gap-2 rounded-chunky border-2 border-dotted border-line/70 bg-surface px-3 py-2"
+          >
+            <PiggyBank size={13} className="shrink-0 text-muted" />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: e.color }} />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{e.name}</span>
+            <Money cents={bal} className={cn('text-sm', bal < 0 ? 'text-neg' : 'text-muted')} />
+            <div className="flex flex-col">
+              <button
+                onClick={() => onMove(e.id, -1)}
+                disabled={i === 0}
+                aria-label="Subir apartado"
+                className="text-muted active:text-fg disabled:opacity-25"
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                onClick={() => onMove(e.id, 1)}
+                disabled={i === list.length - 1}
+                aria-label="Bajar apartado"
+                className="text-muted active:text-fg disabled:opacity-25"
+              >
+                <ChevronDown size={16} />
+              </button>
+            </div>
+            <button
+              onClick={() => onEdit(e)}
+              aria-label={`Editar apartado ${e.name}`}
+              className="rounded-lg border-2 border-line bg-surface p-1.5 active:translate-y-0.5"
+            >
+              <Pencil size={13} />
+            </button>
+          </div>
+        )
+      })}
+      <button
+        onClick={onAdd}
+        className="flex w-full items-center justify-center gap-1.5 rounded-chunky border-2 border-dotted border-line/40 py-1.5 text-xs font-semibold text-muted active:bg-surface"
+      >
+        <PiggyBank size={13} /> Apartado en {accountName}
+      </button>
     </div>
   )
 }
