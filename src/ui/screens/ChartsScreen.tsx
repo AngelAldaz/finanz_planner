@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -15,12 +16,15 @@ import { usePlanStore } from '../../state/planStore'
 import { useComputed } from '../../state/hooks'
 import { formatMXNCompact, fromCents, toCents } from '../../domain/money'
 import { parseISO } from '../../domain/dates'
+import { effectiveDate } from '../../domain/ledger'
 import { Money } from '../components/Money'
 import { cn } from '../../lib/cn'
 
 const INK = '#141414'
 const NEG = '#ff3b30'
+const RESERVED = '#9b51e0'
 const money = (v: number) => formatMXNCompact(Math.round(v * 100))
+const yearOf = (iso: string) => Number(iso.slice(0, 4))
 
 export function ChartsScreen() {
   const computed = useComputed()
@@ -29,23 +33,52 @@ export function ChartsScreen() {
   const setThreshold = usePlanStore((s) => s.setLowBalanceThreshold)
   const [input, setInput] = useState('')
 
+  // ---- navegación por año: solo los años que tienen datos (atrás, ahora y adelante)
+  const years = useMemo(
+    () => [...new Set(computed.weeks.map((w) => yearOf(w.key.weekStart)))].sort((a, b) => a - b),
+    [computed],
+  )
+  const thisYear = new Date().getFullYear()
+  const [pickedYear, setPickedYear] = useState<number | null>(null)
+  const year = useMemo(() => {
+    if (!years.length) return thisYear
+    if (pickedYear !== null && years.includes(pickedYear)) return pickedYear
+    if (years.includes(thisYear)) return thisYear
+    // sin datos este año: el más cercano hacia atrás, si no el primero hacia adelante
+    const back = years.filter((y) => y < thisYear)
+    return back.length ? back[back.length - 1] : years[0]
+  }, [years, pickedYear, thisYear])
+  const yearIdx = years.indexOf(year)
+  const prevYear = yearIdx > 0 ? years[yearIdx - 1] : undefined
+  const nextYear = yearIdx >= 0 && yearIdx < years.length - 1 ? years[yearIdx + 1] : undefined
+
+  const yearWeeks = useMemo(
+    () => computed.weeks.filter((w) => yearOf(w.key.weekStart) === year),
+    [computed, year],
+  )
+  const hasReserved = useMemo(() => yearWeeks.some((w) => w.reservedClosing !== 0), [yearWeeks])
+
   const balanceData = useMemo(
     () =>
-      computed.weeks.map((w) => {
+      yearWeeks.map((w) => {
         const s = parseISO(w.key.weekStart)
         return {
           label: `${s.d}/${s.m}`,
           cierre: fromCents(w.closingBalance),
           min: fromCents(w.lowestBalance),
+          total: fromCents(w.closingBalance + w.reservedClosing),
         }
       }),
-    [computed],
+    [yearWeeks],
   )
+  const yearClosing = yearWeeks.length ? yearWeeks[yearWeeks.length - 1].closingBalance : 0
+  const yearMin = yearWeeks.length ? Math.min(...yearWeeks.map((w) => w.lowestBalance)) : 0
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>()
     for (const p of computed.points) {
       const m = p.movement
+      if (yearOf(effectiveDate(m)) !== year) continue
       if (m.kind === 'delta' && m.amount < 0 && !m.payCardId && !m.cardBlock) {
         const key = m.categoryId ?? '—'
         map.set(key, (map.get(key) ?? 0) + -m.amount)
@@ -61,7 +94,7 @@ export function ChartsScreen() {
         }
       })
       .sort((a, b) => b.total - a.total)
-  }, [computed, categories])
+  }, [computed, categories, year])
 
   const alertWeek = computed.weeks.find((w) => w.lowestBalance < threshold)
 
@@ -102,7 +135,36 @@ export function ChartsScreen() {
         </label>
       </div>
 
-      <ChartCard title="Saldo líquido por semana">
+      {/* selector de año */}
+      <div className="flex items-center justify-between rounded-chunky border-2 border-line bg-surface px-2 py-1.5 shadow-hard-sm">
+        <button
+          onClick={() => prevYear !== undefined && setPickedYear(prevYear)}
+          disabled={prevYear === undefined}
+          aria-label="Año anterior"
+          className="rounded-lg p-1.5 text-fg active:bg-canvas disabled:opacity-25"
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <div className="text-center">
+          <div className="font-display text-xl font-bold tabular-nums">{year}</div>
+          <div className="text-[11px] text-muted">
+            {yearWeeks.length
+              ? `${yearWeeks.length} ${yearWeeks.length === 1 ? 'semana' : 'semanas'} con datos`
+              : 'sin datos'}
+            {year === thisYear && ' · este año'}
+          </div>
+        </div>
+        <button
+          onClick={() => nextYear !== undefined && setPickedYear(nextYear)}
+          disabled={nextYear === undefined}
+          aria-label="Año siguiente"
+          className="rounded-lg p-1.5 text-fg active:bg-canvas disabled:opacity-25"
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+
+      <ChartCard title={`Liquidez disponible por semana · ${year}`}>
         <ResponsiveContainer width="100%" height={210}>
           <LineChart data={balanceData} margin={{ top: 8, right: 10, bottom: 0, left: -8 }}>
             <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke={INK} />
@@ -127,17 +189,28 @@ export function ChartsScreen() {
               strokeDasharray="5 4"
               dot={false}
             />
+            {hasReserved && (
+              <Line
+                type="monotone"
+                dataKey="total"
+                stroke={RESERVED}
+                strokeWidth={2}
+                strokeDasharray="2 3"
+                dot={false}
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
         <Legend
           items={[
-            { c: INK, t: 'Cierre' },
+            { c: INK, t: 'Disponible al cierre' },
             { c: NEG, t: 'Mínimo' },
+            ...(hasReserved ? [{ c: RESERVED, t: 'Con apartados' }] : []),
           ]}
         />
       </ChartCard>
 
-      <ChartCard title="Gasto por categoría">
+      <ChartCard title={`Gasto por categoría · ${year}`}>
         {byCategory.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted">Aún no hay gastos.</p>
         ) : (
@@ -167,8 +240,13 @@ export function ChartsScreen() {
       </ChartCard>
 
       <p className="px-1 text-center text-xs text-muted">
-        Saldo final <Money cents={computed.finalBalance} /> · mínimo{' '}
-        <Money cents={computed.minBalance} />
+        {year}: cierre <Money cents={yearClosing} /> · mínimo <Money cents={yearMin} />
+        {computed.finalReserved !== 0 && (
+          <>
+            {' '}
+            · apartado hoy <Money cents={computed.finalReserved} />
+          </>
+        )}
       </p>
     </div>
   )
