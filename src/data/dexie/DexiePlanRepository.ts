@@ -6,6 +6,7 @@ import type {
   Category,
   CreditCard,
   DebitAccount,
+  Envelope,
   VoucherAccount,
   ID,
   Movement,
@@ -183,6 +184,17 @@ export class DexiePlanRepository implements PlanRepository {
     await this.db.voucherAccounts.delete(id)
   }
 
+  // ---- envelopes
+  listEnvelopes() {
+    return this.db.envelopes.orderBy('position').toArray()
+  }
+  async putEnvelope(e: Envelope) {
+    await this.db.envelopes.put(e)
+  }
+  async deleteEnvelope(id: ID) {
+    await this.db.envelopes.delete(id)
+  }
+
   // ----- bulk / sync seam -----
   async isEmpty() {
     return (await this.db.plans.count()) === 0
@@ -198,6 +210,7 @@ export class DexiePlanRepository implements PlanRepository {
       creditCards,
       debitAccounts,
       voucherAccounts,
+      envelopes,
     ] = await Promise.all([
       this.db.plans.toArray(),
       this.db.scenarios.toArray(),
@@ -208,6 +221,7 @@ export class DexiePlanRepository implements PlanRepository {
       this.db.creditCards.toArray(),
       this.db.debitAccounts.toArray(),
       this.db.voucherAccounts.toArray(),
+      this.db.envelopes.toArray(),
     ])
     return {
       version: 1,
@@ -220,6 +234,7 @@ export class DexiePlanRepository implements PlanRepository {
       creditCards,
       debitAccounts,
       voucherAccounts,
+      envelopes,
     }
   }
   async importAll(bundle: BackupBundle) {
@@ -234,6 +249,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.creditCards.clear(),
         this.db.debitAccounts.clear(),
         this.db.voucherAccounts.clear(),
+        this.db.envelopes.clear(),
       ])
       await Promise.all([
         this.db.plans.bulkPut(bundle.plans),
@@ -245,6 +261,7 @@ export class DexiePlanRepository implements PlanRepository {
         this.db.creditCards.bulkPut(bundle.creditCards ?? []),
         this.db.debitAccounts.bulkPut(bundle.debitAccounts ?? []),
         this.db.voucherAccounts.bulkPut(bundle.voucherAccounts ?? []),
+        this.db.envelopes.bulkPut(bundle.envelopes ?? []),
       ])
     })
   }

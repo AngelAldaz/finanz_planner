@@ -5,6 +5,8 @@ import type {
   ComputedScenario,
   CreditCard,
   DebitAccount,
+  Envelope,
+  EnvelopeState,
   Horizon,
   ID,
   ISODate,
@@ -25,6 +27,7 @@ export interface ScenarioInput {
   cards?: CreditCard[]
   debitAccounts?: DebitAccount[]
   voucherAccounts?: VoucherAccount[]
+  envelopes?: Envelope[]
   horizon: Horizon
   today?: ISODate // para los saldos "a día de hoy" (default: estado final)
 }
@@ -36,6 +39,7 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     cards = [],
     debitAccounts = [],
     voucherAccounts = [],
+    envelopes = [],
     horizon,
     today,
   } = input
@@ -48,7 +52,13 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     (g) => !manualKeys.has(g.source!.occurrenceKey!),
   )
 
-  const points = computeLedger([...movements, ...generated], cards, debitAccounts, voucherAccounts)
+  const points = computeLedger(
+    [...movements, ...generated],
+    cards,
+    debitAccounts,
+    voucherAccounts,
+    envelopes,
+  )
   const weeks = weekSummaries(points)
 
   let minBalance = points.length ? points[0].balanceAfter : 0
@@ -71,29 +81,36 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
 
   const orderedDebits = [...debitAccounts].sort((a, b) => a.position - b.position)
   const orderedVouchers = [...voucherAccounts].sort((a, b) => a.position - b.position)
+  const orderedEnvelopes = [...envelopes].sort((a, b) => a.position - b.position)
   const statesAt = (snap: LedgerPoint | undefined) => {
     const cardStates: CardState[] = cards.map((c) => {
       const debt = snap?.cardDebtAfter[c.id] ?? 0
       return { card: c, debt, available: c.limit - debt, blocked: snap?.cardBlockedAfter[c.id] ?? false }
     })
+    const liq = (id: ID) => {
+      const balance = snap?.cashAfter[id] ?? 0
+      const free = snap?.freeAfter[id] ?? balance
+      return { balance, free, reserved: balance - free }
+    }
     const cashStates: CashState[] = [
-      { id: LIQUID, name: EFECTIVO_NAME, kind: 'cash', balance: snap?.cashAfter[LIQUID] ?? 0, blocked: false },
+      { id: LIQUID, name: EFECTIVO_NAME, kind: 'cash', ...liq(LIQUID), blocked: false },
       ...orderedDebits.map((d) => ({
         id: d.id,
         name: d.name,
         kind: 'debit' as const,
-        balance: snap?.cashAfter[d.id] ?? 0,
+        ...liq(d.id),
         blocked: snap?.cardBlockedAfter[d.id] ?? false,
       })),
     ]
-    const voucherStates: CashState[] = orderedVouchers.map((v) => ({
-      id: v.id,
-      name: v.name,
-      kind: 'voucher' as const,
-      balance: snap?.voucherAfter[v.id] ?? 0,
-      blocked: false,
+    const voucherStates: CashState[] = orderedVouchers.map((v) => {
+      const balance = snap?.voucherAfter[v.id] ?? 0
+      return { id: v.id, name: v.name, kind: 'voucher' as const, balance, free: balance, reserved: 0, blocked: false }
+    })
+    const envelopeStates: EnvelopeState[] = orderedEnvelopes.map((e) => ({
+      envelope: e,
+      balance: snap?.envelopeAfter[e.id] ?? 0,
     }))
-    return { cardStates, cashStates, voucherStates }
+    return { cardStates, cashStates, voucherStates, envelopeStates }
   }
 
   const last = points.length ? points[points.length - 1] : undefined
@@ -115,7 +132,8 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     scenarioId: input.scenarioId ?? '',
     points,
     weeks,
-    finalBalance: points.length ? points[points.length - 1].balanceAfter : 0,
+    finalBalance: last?.balanceAfter ?? 0,
+    finalReserved: last?.reservedAfter ?? 0,
     minBalance,
     minBalanceAt,
     firstNegativeWeek: firstNeg?.key,
@@ -126,5 +144,7 @@ export function buildComputedScenario(input: ScenarioInput): ComputedScenario {
     cashStatesToday: todayStates.cashStates,
     voucherStates: final.voucherStates,
     voucherStatesToday: todayStates.voucherStates,
+    envelopeStates: final.envelopeStates,
+    envelopeStatesToday: todayStates.envelopeStates,
   }
 }

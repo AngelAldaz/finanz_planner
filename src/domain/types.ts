@@ -69,6 +69,20 @@ export interface VoucherAccount {
   position: number // solo orden visual
 }
 
+/**
+ * Apartado: sub-bolsa DENTRO de una cuenta de liquidez (efectivo o débito; nunca vales ni crédito).
+ * El dinero apartado sigue estando en la cuenta, pero el ruteo automático NO lo toca: solo usa
+ * el dinero libre. Un gasto sale de un apartado únicamente si se elige a mano (`paidWith` = id
+ * del apartado). Se abona/retira con traspasos cuenta ↔ apartado.
+ */
+export interface Envelope {
+  id: ID
+  accountId: ID // LIQUID o el id de una tarjeta de débito
+  name: string
+  color: string
+  position: number
+}
+
 /** id del efectivo (la cuenta de liquidez base, siempre presente). */
 export const LIQUID = 'liquid'
 export const EFECTIVO_NAME = 'Efectivo'
@@ -148,13 +162,17 @@ export interface Horizon {
 // ---------- view-models (NUNCA se persisten) ----------
 export interface LedgerPoint {
   movement: Movement
-  balanceBefore: Cents // líquido TOTAL antes (efectivo + débitos)
-  balanceAfter: Cents // líquido TOTAL después
+  balanceBefore: Cents // liquidez DISPONIBLE antes (efectivo + débitos, sin lo apartado)
+  balanceAfter: Cents // liquidez DISPONIBLE después
+  reservedAfter: Cents // total apartado tras este punto (líquido total = balanceAfter + reservedAfter)
   isAnchor: boolean
   paidFrom?: ID // cuenta que efectivamente pagó el gasto (o a la que entró el ingreso)
   chargedToCardId?: ID // si el gasto se pagó con crédito (paidFrom es una TDC; el líquido no cambió)
   transferredTo?: ID // traspaso: cuenta destino (paidFrom es la cuenta origen)
-  cashAfter: Record<ID, Cents> // saldo por cuenta de liquidez (efectivo + cada débito) tras este punto
+  envelopeId?: ID // apartado del que salió el gasto / al que entró el ingreso o pago (si aplica)
+  cashAfter: Record<ID, Cents> // saldo TOTAL por cuenta de liquidez (libre + apartado) tras este punto
+  freeAfter: Record<ID, Cents> // saldo LIBRE por cuenta de liquidez tras este punto
+  envelopeAfter: Record<ID, Cents> // saldo por apartado tras este punto
   voucherAfter: Record<ID, Cents> // saldo por tarjeta de vales tras este punto (fuera del líquido)
   cardDebtAfter: Record<ID, Cents> // deuda por tarjeta tras este punto
   cardBlockedAfter: Record<ID, boolean> // estado encendida/apagada por cuenta (débito y crédito) tras este punto
@@ -178,6 +196,8 @@ export interface WeekSummary {
   hadAnchor: boolean
   goesNegative: boolean
   cashClosing: Record<ID, Cents> // saldo de liquidez por cuenta al cierre de la semana
+  envelopeClosing: Record<ID, Cents> // saldo por apartado al cierre de la semana
+  reservedClosing: Cents // total apartado al cierre
   voucherClosing: Record<ID, Cents> // saldo de vales por cuenta al cierre de la semana
   cardDebtClosing: Record<ID, Cents> // deuda por tarjeta al cierre de la semana
 }
@@ -194,15 +214,23 @@ export interface CashState {
   id: ID
   name: string
   kind: 'cash' | 'debit' | 'voucher'
-  balance: Cents
+  balance: Cents // total en la cuenta (libre + apartado)
+  free: Cents // disponible (no apartado) — en vales = balance
+  reserved: Cents // apartado en esta cuenta
   blocked: boolean // solo aplica a débitos
+}
+
+export interface EnvelopeState {
+  envelope: Envelope
+  balance: Cents
 }
 
 export interface ComputedScenario {
   scenarioId: ID
   points: LedgerPoint[]
   weeks: WeekSummary[]
-  finalBalance: Cents // líquido final
+  finalBalance: Cents // liquidez DISPONIBLE final (sin lo apartado)
+  finalReserved: Cents // total apartado al final
   minBalance: Cents
   minBalanceAt?: ISODate
   firstNegativeWeek?: WeekKey
@@ -213,6 +241,8 @@ export interface ComputedScenario {
   cashStatesToday: CashState[] // a día de hoy
   voucherStates: CashState[] // vales, saldo final proyectado (NO suman al líquido)
   voucherStatesToday: CashState[] // vales a día de hoy
+  envelopeStates: EnvelopeState[] // apartados, saldo final proyectado
+  envelopeStatesToday: EnvelopeState[] // apartados a día de hoy
 }
 
 export interface ScenarioComparison {
@@ -240,4 +270,5 @@ export interface BackupBundle {
   creditCards: CreditCard[]
   debitAccounts?: DebitAccount[]
   voucherAccounts?: VoucherAccount[]
+  envelopes?: Envelope[]
 }

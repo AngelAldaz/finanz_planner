@@ -7,6 +7,7 @@ import type {
   Category,
   CreditCard,
   DebitAccount,
+  Envelope,
   ID,
   Movement,
   Plan,
@@ -67,6 +68,11 @@ export interface PlanRepository {
   listVoucherAccounts(): Promise<VoucherAccount[]>
   putVoucherAccount(a: VoucherAccount): Promise<void>
   deleteVoucherAccount(id: ID): Promise<void>
+
+  // envelopes (apartados dentro de efectivo / débitos)
+  listEnvelopes(): Promise<Envelope[]>
+  putEnvelope(e: Envelope): Promise<void>
+  deleteEnvelope(id: ID): Promise<void>
 
   // bulk / sync seam
   isEmpty(): Promise<boolean>

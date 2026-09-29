@@ -4,6 +4,7 @@ import type {
   Category,
   CreditCard,
   DebitAccount,
+  Envelope,
   Movement,
   Plan,
   Scenario,
@@ -21,6 +22,7 @@ export class FinanzDB extends Dexie {
   creditCards!: Table<CreditCard, string>
   debitAccounts!: Table<DebitAccount, string>
   voucherAccounts!: Table<VoucherAccount, string>
+  envelopes!: Table<Envelope, string>
 
   constructor(name = 'finanz') {
     super(name)
@@ -40,6 +42,9 @@ export class FinanzDB extends Dexie {
     })
     this.version(4).stores({
       voucherAccounts: 'id, position',
+    })
+    this.version(5).stores({
+      envelopes: 'id, accountId, position',
     })
   }
 }

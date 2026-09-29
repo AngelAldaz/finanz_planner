@@ -9,6 +9,7 @@ export function useComputed(): ComputedScenario {
   const cards = usePlanStore((s) => s.creditCards)
   const debitAccounts = usePlanStore((s) => s.debitAccounts)
   const voucherAccounts = usePlanStore((s) => s.voucherAccounts)
+  const envelopes = usePlanStore((s) => s.envelopes)
   const horizon = usePlanStore((s) => s.horizon)
   const scenarioId = usePlanStore((s) => s.activeScenarioId)
   const now = new Date()
@@ -22,9 +23,10 @@ export function useComputed(): ComputedScenario {
         cards,
         debitAccounts,
         voucherAccounts,
+        envelopes,
         horizon,
         today,
       }),
-    [scenarioId, movements, cards, debitAccounts, voucherAccounts, horizon, today],
+    [scenarioId, movements, cards, debitAccounts, voucherAccounts, envelopes, horizon, today],
   )
 }

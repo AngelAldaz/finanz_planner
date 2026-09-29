@@ -4,6 +4,7 @@ import type {
   Cents,
   CreditCard,
   DebitAccount,
+  Envelope,
   VoucherAccount,
   Horizon,
   ID,
@@ -173,12 +174,19 @@ export interface AddMovementInput {
   transfer?: { fromId: ID; toId: ID }
 }
 
-/** Nombre a mostrar de una cuenta (efectivo / débito / vales / crédito). */
+/** Nombre a mostrar de una cuenta (efectivo / débito / vales / crédito / apartado). */
 function accountLabel(
-  s: { debitAccounts: DebitAccount[]; voucherAccounts: VoucherAccount[]; creditCards: CreditCard[] },
+  s: {
+    debitAccounts: DebitAccount[]
+    voucherAccounts: VoucherAccount[]
+    creditCards: CreditCard[]
+    envelopes: Envelope[]
+  },
   accountId: ID,
 ): string {
   if (accountId === LIQUID) return EFECTIVO_NAME
+  const env = s.envelopes.find((e) => e.id === accountId)
+  if (env) return `${accountLabel(s, env.accountId)} · ${env.name}`
   return (
     s.debitAccounts.find((d) => d.id === accountId)?.name ??
     s.voucherAccounts.find((v) => v.id === accountId)?.name ??
@@ -195,6 +203,7 @@ interface PlanState {
   creditCards: CreditCard[]
   debitAccounts: DebitAccount[]
   voucherAccounts: VoucherAccount[]
+  envelopes: Envelope[]
   activePlanId?: ID
   activeScenarioId?: ID
   movements: Movement[]
@@ -243,6 +252,11 @@ interface PlanState {
   updateVoucherAccount: (a: VoucherAccount) => Promise<void>
   deleteVoucherAccount: (id: ID) => Promise<void>
   moveVoucherAccount: (id: ID, dir: -1 | 1) => Promise<void>
+  addEnvelope: (accountId: ID, name: string) => Promise<void>
+  updateEnvelope: (e: Envelope) => Promise<void>
+  /** Borra el apartado y limpia los movimientos/recurrencias que lo referencian (en todos los escenarios). */
+  deleteEnvelope: (id: ID) => Promise<void>
+  moveEnvelope: (id: ID, dir: -1 | 1) => Promise<void>
   addCategory: (name: string, color: string) => Promise<void>
   updateCategory: (cat: Category) => Promise<void>
   deleteCategory: (id: ID) => Promise<void>
@@ -256,6 +270,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   creditCards: [],
   debitAccounts: [],
   voucherAccounts: [],
+  envelopes: [],
   movements: [],
   recurrences: [],
   horizon: DEFAULT_HORIZON,
@@ -267,13 +282,15 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }
     const plans = await repository.listPlans()
     const plan = plans[0]
-    const [scenarios, categories, creditCards, debitAccounts, voucherAccounts] = await Promise.all([
-      plan ? repository.listScenarios(plan.id) : Promise.resolve([]),
-      repository.listCategories(),
-      repository.listCreditCards(),
-      repository.listDebitAccounts(),
-      repository.listVoucherAccounts(),
-    ])
+    const [scenarios, categories, creditCards, debitAccounts, voucherAccounts, envelopes] =
+      await Promise.all([
+        plan ? repository.listScenarios(plan.id) : Promise.resolve([]),
+        repository.listCategories(),
+        repository.listCreditCards(),
+        repository.listDebitAccounts(),
+        repository.listVoucherAccounts(),
+        repository.listEnvelopes(),
+      ])
     const scenario = scenarios[0]
     set({
       ready: true,
@@ -283,6 +300,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       creditCards,
       debitAccounts,
       voucherAccounts,
+      envelopes,
       activePlanId: plan?.id,
       horizon: dynamicHorizon(plan, []),
       lowBalanceThreshold: plan?.lowBalanceThreshold ?? 0,
@@ -595,8 +613,64 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   deleteDebitAccount: async (id) => {
+    // sus apartados se van con ella
+    for (const e of get().envelopes.filter((e) => e.accountId === id)) await get().deleteEnvelope(e.id)
     await repository.deleteDebitAccount(id)
     set({ debitAccounts: await repository.listDebitAccounts() })
+  },
+
+  addEnvelope: async (accountId, name) => {
+    const { envelopes } = get()
+    await repository.putEnvelope({
+      id: newId(),
+      accountId,
+      name,
+      color: CARD_COLORS[(envelopes.length + 1) % CARD_COLORS.length],
+      position: envelopes.length,
+    })
+    set({ envelopes: await repository.listEnvelopes() })
+  },
+
+  updateEnvelope: async (e) => {
+    await repository.putEnvelope(e)
+    set({ envelopes: await repository.listEnvelopes() })
+  },
+
+  deleteEnvelope: async (id) => {
+    const { activePlanId } = get()
+    const scenarios = activePlanId ? await repository.listScenarios(activePlanId) : []
+    for (const sc of scenarios) {
+      for (const m of await repository.listMovements(sc.id)) {
+        const touchesTransfer = m.transfer?.fromId === id || m.transfer?.toId === id
+        const anchorOnIt = m.kind === 'anchor' && m.accountId === id
+        if (touchesTransfer || anchorOnIt) await repository.deleteMovement(m.id)
+        else if (m.paidWith === id) await repository.putMovement({ ...m, paidWith: undefined })
+      }
+      for (const r of await repository.listRecurrences(sc.id)) {
+        if (r.transfer?.fromId === id || r.transfer?.toId === id) await repository.deleteRecurrence(r.id)
+        else if (r.paidWith === id) await repository.putRecurrence({ ...r, paidWith: undefined })
+      }
+    }
+    await repository.deleteEnvelope(id)
+    set({ envelopes: await repository.listEnvelopes() })
+    await get().refresh()
+  },
+
+  moveEnvelope: async (id, dir) => {
+    const target = get().envelopes.find((e) => e.id === id)
+    if (!target) return
+    // solo se reordena entre apartados de la MISMA cuenta
+    const list = get()
+      .envelopes.filter((e) => e.accountId === target.accountId)
+      .sort((a, b) => a.position - b.position)
+    const i = list.findIndex((e) => e.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    const a = list[i]
+    const b = list[j]
+    await repository.putEnvelope({ ...a, position: b.position })
+    await repository.putEnvelope({ ...b, position: a.position })
+    set({ envelopes: await repository.listEnvelopes() })
   },
 
   addVoucherAccount: async (name) => {
