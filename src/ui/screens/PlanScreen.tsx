@@ -916,7 +916,7 @@ function MovementRow({
                 {transferFrom?.name ?? '?'} → {transferTo?.name ?? '?'}
               </Tag>
             )}
-            {envAcct && !isTransfer && (
+            {envAcct && !isTransfer && !isAnchor && (
               <Tag color="bg-[#9b51e0] text-white">→ {envAcct.name}</Tag>
             )}
           </span>

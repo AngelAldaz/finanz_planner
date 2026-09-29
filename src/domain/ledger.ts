@@ -159,8 +159,10 @@ export function computeLedger(
       const acct = m.accountId ?? LIQUID
       if (cash.has(acct)) cash.set(acct, m.amount)
       else if (voucher.has(acct)) voucher.set(acct, m.amount)
-      else if (env.has(acct)) env.set(acct, m.amount)
-      else debt.set(acct, m.amount)
+      else if (env.has(acct)) {
+        env.set(acct, m.amount)
+        envelopeId = acct
+      } else debt.set(acct, m.amount)
     } else if (m.transfer) {
       // traspaso entre cuentas de liquidez y/o apartados; el líquido TOTAL no cambia
       const amt = Math.abs(m.amount)

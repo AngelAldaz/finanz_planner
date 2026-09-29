@@ -481,12 +481,26 @@ export function MovementSheet({
                 </Field>
 
                 {isReal && (
-                  <Chips
-                    label="¿De qué cuenta?"
-                    options={allAccounts}
-                    value={account}
-                    onChange={setAccount}
-                  />
+                  <>
+                    <Chips
+                      label="¿De qué cuenta?"
+                      options={allAccounts}
+                      value={acctOfSel(account)}
+                      onChange={setAccount}
+                    />
+                    <EnvelopePick
+                      accountId={acctOfSel(account) ?? LIQUID}
+                      envelopes={envelopes}
+                      value={account}
+                      onChange={setAccount}
+                    />
+                    {envOf(account) && (
+                      <p className="px-1 text-xs text-muted">
+                        Fija cuánto hay en el apartado. El total de {nameOf(envOf(account)!.accountId)} no
+                        cambia: solo se ajusta cuánto de él está libre.
+                      </p>
+                    )}
+                  </>
                 )}
                 {isTraspaso && (
                   <>

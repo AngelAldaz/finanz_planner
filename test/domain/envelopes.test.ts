@@ -182,6 +182,8 @@ describe('apartados: dinero dentro de la cuenta que el ruteo automático no toca
     )
     const p = pts[pts.length - 1]
     expect(p.envelopeAfter['vacaciones']).toBe(30000)
+    expect(p.envelopeId).toBe('vacaciones')
+    expect(p.cashAfter['bbva']).toBe(100000) // el total de la cuenta no cambia
     expect(p.envelopeAfter['fantasma']).toBeUndefined()
     expect(p.freeAfter['bbva']).toBe(70000)
   })
