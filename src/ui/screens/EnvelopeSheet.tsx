@@ -30,7 +30,7 @@ export function EnvelopeSheet({ open, onOpenChange, envelope, accountName, onSav
   }
 
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    <Drawer.Root open={open} onOpenChange={onOpenChange} repositionInputs={false}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[22px] border-2 border-line bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
@@ -47,7 +47,6 @@ export function EnvelopeSheet({ open, onOpenChange, envelope, accountName, onSav
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Vacaciones, Renta, Colegiaturas…"
-                autoFocus={!envelope}
                 className="mt-0.5 w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
               />
             </label>

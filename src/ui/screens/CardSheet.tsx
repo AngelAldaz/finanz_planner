@@ -31,7 +31,7 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
   }
 
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    <Drawer.Root open={open} onOpenChange={onOpenChange} repositionInputs={false}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[22px] border-2 border-line bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
@@ -48,7 +48,6 @@ export function CardSheet({ open, onOpenChange, card, onSave, onDelete }: Props)
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="BBVA, Nu, Amex…"
-                autoFocus={!card}
                 className="mt-0.5 w-full bg-transparent text-lg outline-none placeholder:text-muted/60"
               />
             </label>
